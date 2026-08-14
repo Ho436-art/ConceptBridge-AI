@@ -12,7 +12,17 @@ from .queries import (
     get_user,
     save_learning_history,
     update_mastery,
-    log_smart_refresh
+    log_smart_refresh,
+    get_all_users,
+    get_all_topics,
+    get_db_learner_profile,
+    update_db_learner_profile,
+    get_topic_mastery,
+    get_learning_history,
+    get_smart_refresh_history,
+    save_feedback,
+    seed_topics_if_empty,
+    create_topic_if_not_exists
 )
 
 __all__ = [
@@ -22,5 +32,15 @@ __all__ = [
     "get_user",
     "save_learning_history",
     "update_mastery",
-    "log_smart_refresh"
+    "log_smart_refresh",
+    "get_all_users",
+    "get_all_topics",
+    "get_db_learner_profile",
+    "update_db_learner_profile",
+    "get_topic_mastery",
+    "get_learning_history",
+    "get_smart_refresh_history",
+    "save_feedback",
+    "seed_topics_if_empty",
+    "create_topic_if_not_exists"
 ]

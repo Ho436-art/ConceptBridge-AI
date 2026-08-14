@@ -36,6 +36,10 @@ def init_db(db_path: Optional[str] = None, schema_path: Optional[str] = None) ->
     with conn:
         conn.executescript(schema_sql)
     conn.close()
+    
+    # Import locally to avoid circular imports
+    from .queries import seed_topics_if_empty
+    seed_topics_if_empty(path)
 
 if __name__ == "__main__":
     init_db()
