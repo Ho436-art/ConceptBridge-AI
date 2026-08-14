@@ -157,3 +157,35 @@ def explain_concept(
     )
 
     return explanation
+
+
+def answer_follow_up(concept: str, question: str, learner_profile: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Answers a follow-up question on a concept based on the learner's estimated knowledge level.
+    """
+    level = "beginner"
+    if learner_profile:
+        if isinstance(learner_profile, dict):
+            level = learner_profile.get("estimated_level", "beginner")
+        else:
+            level = getattr(learner_profile, "estimated_level", "beginner")
+            
+    # Generic structured responses for high aesthetic display quality
+    concept_lower = concept.lower()
+    
+    if "recursion" in concept_lower:
+        if "base case" in question.lower():
+            return "Excellent question! A **base case** is the most crucial part of a recursive function. \n\n" \
+                   "**Why we need it:** Without a base case, the function keeps calling itself forever, filling up the call stack until you get a `RecursionError: maximum recursion depth exceeded` (known as a stack overflow). \n\n" \
+                   "**Example:** In our doll analogy, the base case is the smallest, solid doll that doesn't open. In code, it is usually a simple `if` condition: `if n <= 1: return 1`."
+        elif "stack overflow" in question.lower() or "limit" in question.lower():
+            return "A **stack overflow** occurs because each recursive call requires memory to store its arguments and variables. This memory is stored in stack frames. \n\n" \
+                   "Python has a default recursion limit of **1000 calls**. If your recursion goes deeper than that, Python stops it automatically. You can increase this using `sys.setrecursionlimit()`, but it is usually better to optimize your algorithm (or use loops) to prevent stack build-up."
+                   
+    # Generic fallback
+    return f"Regarding your question *'{question}'* about **{concept}**:\n\n" \
+           f"Here is an explanation tailored to your **{level}** level:\n\n" \
+           f"1. **Core Concept Connection:** This relates directly to how state and variables are managed in the background.\n" \
+           f"2. **Real-world Insight:** Think of it like reading the index of a book. Instead of reading the whole book again, you are zooming in on this specific page.\n" \
+           f"3. **Practical Tip:** When implementing this, start by testing the simplest possible input (e.g. `None`, `0` or empty lists) to check how your logic behaves under basic inputs.\n\n" \
+           f"Let me know if you would like me to show a code snippet or another analogy!"

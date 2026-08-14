@@ -47,6 +47,13 @@ from database.queries import (
     log_smart_refresh,
     get_refresh_sessions_by_user,
     get_recent_learning_history,
+    get_all_users,
+    get_all_topics,
+    get_db_learner_profile,
+    update_db_learner_profile,
+    get_learning_history,
+    get_smart_refresh_history,
+    create_topic_if_not_exists,
 )
 
 __all__ = [
@@ -110,4 +117,12 @@ __all__ = [
     "get_refresh_sessions_by_user",
     # Learning History
     "get_recent_learning_history",
+    # UI Helpers
+    "get_all_users",
+    "get_all_topics",
+    "get_db_learner_profile",
+    "update_db_learner_profile",
+    "get_learning_history",
+    "get_smart_refresh_history",
+    "create_topic_if_not_exists",
 ]
