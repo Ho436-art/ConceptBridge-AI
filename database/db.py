@@ -1,6 +1,7 @@
 """
 Centralized Database Connection & Transaction Manager
 Owner: Member 3 (Database)
+ConceptBridge AI - Centralized Database Connection & Transaction Manager
 Provides connection pooling, context managers for safe transactions, and DDL initialization.
 Designed for SQLite with seamless abstraction for MySQL transition.
 """
@@ -62,6 +63,7 @@ def get_connection(
                 cursorclass=DictCursor,
                 autocommit=False,
                 )
+            )
         except ImportError:
             raise ImportError(
                 "PyMySQL is required for MySQL support. Install it with 'pip install pymysql'."

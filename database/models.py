@@ -147,6 +147,7 @@ class TopicMastery:
         data["title"] = self.topic_name
         data["category"] = self.subject
         return data
+        return asdict(self)
 
 
 @dataclass
