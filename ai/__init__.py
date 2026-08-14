@@ -2,13 +2,14 @@
 AI Teaching & Personalization Module for ConceptBridge AI.
 """
 
-from .teaching_engine import explain_concept
+from .teaching_engine import explain_concept, answer_follow_up
 from .learner_profile import get_learner_profile, update_learner_profile
 from .misconception import detect_misconceptions
 from .recommendations import get_next_recommendations
 
 __all__ = [
     "explain_concept",
+    "answer_follow_up",
     "get_learner_profile",
     "update_learner_profile",
     "detect_misconceptions",
