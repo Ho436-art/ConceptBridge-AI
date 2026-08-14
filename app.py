@@ -92,9 +92,12 @@ def main():
         st.session_state.navigation_selection = selection
         
         # User details display in sidebar if logged in
-        if st.session_state.current_user_id:
+        raw_uid = st.session_state.current_user_id
+        user_id_str = getattr(raw_uid, "user_id", raw_uid) if raw_uid else None
+        
+        if user_id_str:
             st.markdown("---")
-            profile = queries.get_db_learner_profile(st.session_state.current_user_id)
+            profile = queries.get_db_learner_profile(user_id_str)
             if profile:
                 st.write(f"👤 **Learner:** {st.session_state.current_user_name}")
                 st.write(f"🌱 **Level:** {profile.get('estimated_level', 'beginner').capitalize()}")
@@ -104,7 +107,7 @@ def main():
             st.markdown("---")
             st.markdown("**Fatigue Monitor**")
             # Proactive fatigue check: if they have studied 3+ times in history, prompt break
-            history = queries.get_learning_history(st.session_state.current_user_id)
+            history = queries.get_learning_history(user_id_str)
             if len(history) >= 3:
                 st.warning("🧠 You've been working hard! Ready for a break?")
                 col_br1, col_br2 = st.columns(2)

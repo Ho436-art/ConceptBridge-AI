@@ -92,8 +92,8 @@ def show():
                 else:
                     # Create user
                     try:
-                        user_id = queries.create_user(new_username.strip(), new_email.strip() or None)
-                        st.session_state.current_user_id = user_id
+                        user = queries.create_user(new_username.strip(), new_email.strip() or None)
+                        st.session_state.current_user_id = getattr(user, "user_id", user)
                         st.session_state.current_user_name = new_username.strip()
                         st.session_state.onboarding_step = True  # Trigger onboarding
                         st.success("Account created successfully!")
