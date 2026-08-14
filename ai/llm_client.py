@@ -197,11 +197,14 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
     Attempts to call available LLM API (OpenAI or Gemini) if keys exist.
     Returns parsed dictionary or None if API is unavailable.
     """
+    import socket
+    socket.setdefaulttimeout(2.5)
+
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    # Try OpenAI if valid key provided
-    if openai_key and openai_key != "your_openai_api_key_here":
+    # Try OpenAI if valid key provided (standard sk- prefix)
+    if openai_key and openai_key.startswith("sk-") and len(openai_key) > 20:
         try:
             import urllib.request
             url = "https://api.openai.com/v1/chat/completions"
@@ -219,15 +222,15 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
                 "response_format": {"type": "json_object"}
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=12) as response:
+            with urllib.request.urlopen(req, timeout=2.0) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 content = res_data["choices"][0]["message"]["content"]
                 return json.loads(_clean_json_string(content))
         except Exception:
             pass  # Fall through to Gemini or fallback
 
-    # Try Gemini if key provided
-    if gemini_key and gemini_key != "your_gemini_api_key_here":
+    # Try Gemini if key provided (standard AIza prefix)
+    if gemini_key and (gemini_key.startswith("AIza") or os.getenv("USE_LIVE_LLM", "").lower() == "true"):
         try:
             import urllib.request
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
@@ -238,7 +241,7 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
                 ]
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=12) as response:
+            with urllib.request.urlopen(req, timeout=2.0) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 content = res_data["candidates"][0]["content"]["parts"][0]["text"]
                 return json.loads(_clean_json_string(content))
