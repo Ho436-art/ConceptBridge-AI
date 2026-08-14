@@ -62,7 +62,6 @@ def get_connection(
                 charset=cfg.mysql_charset,
                 cursorclass=DictCursor,
                 autocommit=False,
-                )
             )
         except ImportError:
             raise ImportError(

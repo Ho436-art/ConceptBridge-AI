@@ -1197,8 +1197,6 @@ def create_topic_if_not_exists(topic_id: str, title: str, category: str, db_path
             (topic_id, title, category)
         )
 
-        )
-
 
 def verify_user_credentials(email: str, password: str, db_path: Optional[str] = None) -> Optional[User]:
     """
