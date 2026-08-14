@@ -49,6 +49,7 @@ class LearnerProfile:
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data["estimated_level"] = self.preferred_level
+        data["preferred_learning_style"] = self.learning_preference
         return data
 
 
@@ -142,7 +143,10 @@ class TopicMastery:
         return self.to_dict().get(item)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["title"] = self.topic_name
+        data["category"] = self.subject
+        return data
 
 
 @dataclass

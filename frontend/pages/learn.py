@@ -120,15 +120,15 @@ def show():
                 "show_example": 2,
                 "practical_example": 2
             }
-            rating = rating_map.get(feedback_type, 3)
-            
-            # Log in database feedback table
+            db_feedback_type = "still_confused"
+            if feedback_type in ["got_it", "almost", "still_confused"]:
+                db_feedback_type = feedback_type
+                
+            # Log in database feedback table using real database schema
             queries.save_feedback(
                 user_id=user_id,
-                history_id=history_id,
-                rating=rating,
-                feedback_type=feedback_type,
-                comments=f"User feedback: {feedback_type}"
+                topic_id=topic_id,
+                feedback_type=db_feedback_type
             )
             
             # Update mastery delta based on feedback

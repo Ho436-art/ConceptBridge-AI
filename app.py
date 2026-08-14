@@ -19,6 +19,14 @@ load_dotenv()
 # Initialize Database on Startup
 init_db()
 
+# Auto-seed database with development data on first run if empty
+try:
+    from database.seed import seed_development_data
+    if not queries.get_all_topics():
+        seed_development_data(reset_first=False)
+except Exception as e:
+    print(f"Error seeding database: {e}")
+
 # Streamlit Page Configuration
 st.set_page_config(
     page_title="ConceptBridge AI",
