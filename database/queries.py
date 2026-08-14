@@ -1099,3 +1099,101 @@ def get_recent_learning_history(user_id: str, limit: int = 20, db_path: Optional
         "recent_refresh_sessions": refresh_sessions,
         "topic_mastery_overview": mastery_summary,
     }
+
+def get_all_users(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve all users in the system."""
+    with get_db_cursor(db_path=db_path) as cursor:
+        cursor.execute("SELECT * FROM users ORDER BY name ASC")
+        rows = cursor.fetchall()
+        users = []
+        for r in rows:
+            u = dict(r)
+            u["username"] = r["name"]
+            users.append(u)
+        return users
+
+def get_all_topics(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve all topics in the database."""
+    with get_db_cursor(db_path=db_path) as cursor:
+        cursor.execute("SELECT * FROM topics ORDER BY topic_name ASC")
+        rows = cursor.fetchall()
+        topics = []
+        for r in rows:
+            t = dict(r)
+            t["title"] = r["topic_name"]
+            t["category"] = r["subject"]
+            topics.append(t)
+        return topics
+
+def get_db_learner_profile(user_id: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve learner profile for a specific user."""
+    with get_db_cursor(db_path=db_path) as cursor:
+        cursor.execute("SELECT * FROM learner_profiles WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        p = dict(row)
+        p["estimated_level"] = row["preferred_level"]
+        p["preferred_learning_style"] = row["learning_preference"]
+        return p
+
+def update_db_learner_profile(user_id: str, level: str, style: str, db_path: Optional[str] = None) -> None:
+    """Update user learning level and style in database."""
+    with get_db_cursor(commit=True, db_path=db_path) as cursor:
+        cursor.execute(
+            """
+            UPDATE learner_profiles 
+            SET preferred_level = ?, learning_preference = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            (level, style, user_id)
+        )
+
+def get_learning_history(user_id: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve explanation history with titles for a user."""
+    with get_db_cursor(db_path=db_path) as cursor:
+        cursor.execute(
+            """
+            SELECT ls.*, t.topic_name as title 
+            FROM learning_sessions ls 
+            JOIN topics t ON ls.topic_id = t.topic_id 
+            WHERE ls.user_id = ? 
+            ORDER BY ls.started_at DESC
+            """,
+            (user_id,)
+        )
+        rows = cursor.fetchall()
+        history = []
+        for r in rows:
+            h = dict(r)
+            h["title"] = r["title"]
+            h["explanation_level"] = "beginner"
+            h["created_at"] = str(r["started_at"])
+            h["time_spent_seconds"] = r["duration"] or 0
+            history.append(h)
+        return history
+
+def get_smart_refresh_history(user_id: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve break logs for a user."""
+    with get_db_cursor(db_path=db_path) as cursor:
+        cursor.execute(
+            "SELECT * FROM refresh_sessions WHERE user_id = ? ORDER BY started_at DESC",
+            (user_id,)
+        )
+        rows = cursor.fetchall()
+        history = []
+        for r in rows:
+            h = dict(r)
+            h["duration_seconds"] = r["duration"] or 0
+            h["created_at"] = str(r["started_at"])
+            history.append(h)
+        return history
+
+def create_topic_if_not_exists(topic_id: str, title: str, category: str, db_path: Optional[str] = None) -> None:
+    """Inserts a new topic if it does not already exist."""
+    with get_db_cursor(commit=True, db_path=db_path) as cursor:
+        cursor.execute(
+            "INSERT OR IGNORE INTO topics (topic_id, topic_name, subject, difficulty) VALUES (?, ?, ?, 'beginner')",
+            (topic_id, title, category)
+        )
+
