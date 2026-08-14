@@ -32,17 +32,25 @@ from database.queries import (
 )
 
 
+def safe_print(msg: str):
+    """Safely prints messages on all operating systems without UnicodeEncodeError."""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode("ascii"))
+
+
 def seed_development_data(reset_first: bool = True):
     """
     Seeds development data with rich, realistic computer science & AI concepts.
     """
-    print("🌱 Initializing database schema...")
+    safe_print("[INFO] Initializing database schema...")
     if reset_first:
         reset_db()
     else:
         init_db()
 
-    print("📚 Seeding Topics...")
+    safe_print("[INFO] Seeding Topics...")
     topics_data = [
         {
             "topic_id": "top_recursion",
@@ -91,9 +99,9 @@ def seed_development_data(reset_first: bool = True):
             description=t["description"],
         )
         created_topics[t["topic_id"]] = topic
-        print(f"  ✓ Added Topic: {topic.topic_name} ({topic.subject})")
+        safe_print(f"  + Added Topic: {topic.topic_name} ({topic.subject})")
 
-    print("\n❓ Seeding Questions...")
+    safe_print("[INFO] Seeding Questions...")
     questions_data = [
         # Recursion
         {
@@ -143,9 +151,9 @@ def seed_development_data(reset_first: bool = True):
             explanation=q["explanation"],
         )
         created_questions[q["question_id"]] = question
-        print(f"  ✓ Added Question: {question.question_text[:50]}...")
+        safe_print(f"  + Added Question: {question.question_text[:50]}...")
 
-    print("\n👤 Seeding Demo Users & Learner Profiles...")
+    safe_print("[INFO] Seeding Demo Users & Learner Profiles...")
     # User 1: Alex (Visual Learner, Novice)
     user1 = create_user(
         name="Alex Mercer",
@@ -159,7 +167,7 @@ def seed_development_data(reset_first: bool = True):
         learning_preference="visual",
         overall_level="novice",
     )
-    print(f"  ✓ Created User: {user1.name} ({user1.email})")
+    safe_print(f"  + Created User: {user1.name} ({user1.email})")
 
     # User 2: Sarah (Step-by-step Learner, Intermediate)
     user2 = create_user(
@@ -174,9 +182,9 @@ def seed_development_data(reset_first: bool = True):
         learning_preference="step_by_step",
         overall_level="intermediate",
     )
-    print(f"  ✓ Created User: {user2.name} ({user2.email})")
+    safe_print(f"  + Created User: {user2.name} ({user2.email})")
 
-    print("\n⏱️ Seeding Learning Sessions, Attempts, and Mastery for Alex...")
+    safe_print("[INFO] Seeding Learning Sessions, Attempts, and Mastery for Alex...")
     # Learning session 1: Recursion
     save_learning_session(
         user_id=user1.user_id,
@@ -232,7 +240,7 @@ def seed_development_data(reset_first: bool = True):
         completed=True,
     )
 
-    print("\n⏱️ Seeding Data for Sarah...")
+    safe_print("[INFO] Seeding Data for Sarah...")
     # Sarah's mastery on Backpropagation & SQL Indexing
     update_topic_mastery(
         user_id=user2.user_id,
@@ -263,7 +271,7 @@ def seed_development_data(reset_first: bool = True):
         reason="Start with memoized Fibonacci before advancing to 2D grid pathing.",
     )
 
-    print("\n✨ Development seed data successfully populated!")
+    safe_print("[SUCCESS] Development seed data successfully populated!")
 
 
 if __name__ == "__main__":
