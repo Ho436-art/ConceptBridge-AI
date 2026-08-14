@@ -5,8 +5,12 @@ Owner: Member 2 (UI/UX)
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 import database.queries as queries
 import ai.recommendations as recommendations
 
@@ -100,56 +104,61 @@ def show():
     col_chart1, col_chart2 = st.columns([5, 4])
     
     with col_chart1:
-        # Mastery Horizontal Bar Chart
         df_mastery = pd.DataFrame(db_mastery)
         df_mastery["mastery_pct"] = df_mastery["mastery_score"] * 100
         
-        # Color mapping depending on category
-        fig_mastery = px.bar(
-            df_mastery,
-            x="mastery_pct",
-            y="title",
-            orientation="h",
-            color="category",
-            title="Topic Mastery Progress (%)",
-            labels={"mastery_pct": "Mastery Level", "title": "Concept"},
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        
-        # Style Chart
-        fig_mastery.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_family="Inter",
-            font_color="#FFF",
-            title_font_family="Outfit",
-            title_font_size=16,
-            xaxis=dict(range=[0, 100], gridcolor="rgba(255,255,255,0.1)"),
-            yaxis=dict(gridcolor="rgba(0,0,0,0)")
-        )
-        st.plotly_chart(fig_mastery, use_container_width=True)
+        if HAS_PLOTLY:
+            # Mastery Horizontal Bar Chart
+            fig_mastery = px.bar(
+                df_mastery,
+                x="mastery_pct",
+                y="title",
+                orientation="h",
+                color="category",
+                title="Topic Mastery Progress (%)",
+                labels={"mastery_pct": "Mastery Level", "title": "Concept"},
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig_mastery.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font_family="Inter",
+                font_color="#FFF",
+                title_font_family="Outfit",
+                title_font_size=16,
+                xaxis=dict(range=[0, 100], gridcolor="rgba(255,255,255,0.1)"),
+                yaxis=dict(gridcolor="rgba(0,0,0,0)")
+            )
+            st.plotly_chart(fig_mastery, use_container_width=True)
+        else:
+            st.subheader("Topic Mastery Progress (%)")
+            chart_df = df_mastery.set_index("title")[["mastery_pct"]]
+            st.bar_chart(chart_df)
         
     with col_chart2:
-        # Retention Metrics Pie Chart (mastery status distribution)
-        status_counts = df_mastery["status"].value_counts().reset_index()
-        status_counts.columns = ["status", "count"]
-        
-        fig_pie = px.pie(
-            status_counts,
-            values="count",
-            names="status",
-            title="Comprehension Distribution",
-            color_discrete_sequence=px.colors.qualitative.Safe
-        )
-        fig_pie.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            font_family="Inter",
-            font_color="#FFF",
-            title_font_family="Outfit",
-            title_font_size=16,
-        )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
+        if HAS_PLOTLY:
+            status_counts = df_mastery["status"].value_counts().reset_index()
+            status_counts.columns = ["status", "count"]
+            
+            fig_pie = px.pie(
+                status_counts,
+                values="count",
+                names="status",
+                title="Comprehension Distribution",
+                color_discrete_sequence=px.colors.qualitative.Safe
+            )
+            fig_pie.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                font_family="Inter",
+                font_color="#FFF",
+                title_font_family="Outfit",
+                title_font_size=16,
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.subheader("Comprehension Status")
+            st.dataframe(df_mastery[["title", "status", "mastery_pct"]])
 
     # 3. RECOMMENDATIONS & HISTORY
     st.markdown("---")
