@@ -120,19 +120,32 @@ def show():
                             st.warning(f"⚠️ {recognized_text}")
 
         with col_send:
-            if st.button("➤ Send", key="btn_composer_send", type="primary", use_container_width=True):
-                query_to_process = user_typed_query.strip()
-                doc_to_process = st.session_state.attached_doc_context
-                
-                if query_to_process or doc_to_process:
-                    final_prompt = query_to_process if query_to_process else f"Explain the attached file: {st.session_state.attached_doc_name}"
+            col_send_btn, col_clear_btn = st.columns([2, 1])
+            with col_send_btn:
+                if st.button("➤ Send", key="btn_composer_send", type="primary", use_container_width=True):
+                    query_to_process = user_typed_query.strip()
+                    doc_to_process = st.session_state.attached_doc_context
+                    
+                    if query_to_process or doc_to_process:
+                        final_prompt = query_to_process if query_to_process else f"Explain the attached file: {st.session_state.attached_doc_name}"
+                        st.session_state.transcribed_text_buffer = ""
+                        st.session_state.main_composer_textarea = ""
+                        st.session_state.attached_doc_context = None
+                        st.session_state.attached_doc_name = None
+                        _process_new_user_prompt(final_prompt, user_id, context_document=doc_to_process)
+                        st.rerun()
+                    else:
+                        st.warning("Please type a concept or record speech before sending.")
+            with col_clear_btn:
+                if st.button("🧹 Reset", key="btn_clear_chat", help="Clear conversation history & start fresh", use_container_width=True):
+                    st.session_state.messages = []
+                    st.session_state.active_concept = None
+                    st.session_state.current_explanation = None
                     st.session_state.transcribed_text_buffer = ""
+                    st.session_state.main_composer_textarea = ""
                     st.session_state.attached_doc_context = None
                     st.session_state.attached_doc_name = None
-                    _process_new_user_prompt(final_prompt, user_id, context_document=doc_to_process)
                     st.rerun()
-                else:
-                    st.warning("Please type a concept or record speech before sending.")
 
         if st.session_state.attached_doc_name:
             st.info(f"📎 **Attached:** `{st.session_state.attached_doc_name}` — Will be sent to the AI with your question.")
