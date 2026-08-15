@@ -82,7 +82,8 @@ def handle_chat_message(
     user_message: str,
     active_concept: Optional[str] = None,
     learner_profile: Optional[LearnerProfile] = None,
-    previous_explanation: Optional[Dict[str, Any]] = None
+    previous_explanation: Optional[Dict[str, Any]] = None,
+    context_document: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Main entry point for conversational learning messages.
@@ -95,7 +96,7 @@ def handle_chat_message(
       "active_concept": str
     }
     """
-    intent = classify_intent(user_message, active_concept)
+    intent = classify_intent(user_message, active_concept) if not context_document else MessageIntent.NEW_CONCEPT
 
     # 1. GREETING
     if intent == MessageIntent.GREETING:
@@ -126,7 +127,7 @@ def handle_chat_message(
     # 3. MAKE SIMPLER
     if intent == MessageIntent.SIMPLIFY:
         target_concept = active_concept or "Recursion"
-        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="super_simple")
+        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="super_simple", context_document=context_document)
         return {
             "intent": intent,
             "text_response": f"Let's break down **{target_concept}** in super simple, plain English without jargon:",
@@ -137,7 +138,7 @@ def handle_chat_message(
     # 4. ANOTHER EXAMPLE
     if intent == MessageIntent.ANOTHER_EXAMPLE:
         target_concept = active_concept or "Recursion"
-        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="practical_code")
+        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="practical_code", context_document=context_document)
         return {
             "intent": intent,
             "text_response": f"Here is an alternative practical walk-through for **{target_concept}**:",
@@ -157,7 +158,7 @@ def handle_chat_message(
         }
 
     # 6. CONTEXTUAL FOLLOW-UP QUESTION
-    if intent == MessageIntent.FOLLOW_UP and active_concept:
+    if intent == MessageIntent.FOLLOW_UP and active_concept and not context_document:
         # Generate targeted answer to the follow-up question in context of active concept
         prompt = (
             f"Concept in Context: '{active_concept}'\n"
@@ -187,7 +188,7 @@ def handle_chat_message(
         }
 
     # 7. NEW CONCEPT QUESTION
-    exp = explain_concept(user_message, learner_profile=learner_profile)
+    exp = explain_concept(user_message, learner_profile=learner_profile, context_document=context_document)
     return {
         "intent": MessageIntent.NEW_CONCEPT,
         "text_response": f"Here is the conceptual breakdown for **{exp.concept}**:",

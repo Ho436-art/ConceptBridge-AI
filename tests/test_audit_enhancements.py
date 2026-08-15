@@ -200,5 +200,28 @@ class TestFourMandatoryProblems(unittest.TestCase):
         self.assertEqual(len(refresh_hist), 0)
 
 
+    def test_document_and_pdf_extraction_engine(self):
+        """Document engine must parse text files and extract structured PDF contents."""
+        import ai.document_engine as doc_engine
+        
+        # Test text / code file extraction
+        sample_code = b"def binary_search(arr, target):\n    pass"
+        success_txt, text_content = doc_engine.extract_content_from_file("algorithm.py", sample_code)
+        self.assertTrue(success_txt)
+        self.assertIn("binary_search", text_content)
+
+        # Test image file tag
+        success_img, img_tag = doc_engine.extract_content_from_file("graph_diagram.png", b"fake_png_binary_data")
+        self.assertTrue(success_img)
+        self.assertIn("graph_diagram.png", img_tag)
+
+    def test_explain_concept_with_attached_document(self):
+        """Teaching engine must incorporate attached document context into generated explanation."""
+        doc_context = "TCP/IP consists of 4 abstraction layers: Network Interface, Internet, Transport, and Application."
+        exp = explain_concept("Explain this document in simple words", context_document=doc_context)
+        self.assertIsNotNone(exp.simple_explanation)
+        self.assertIsNotNone(exp.technical_explanation)
+
+
 if __name__ == "__main__":
     unittest.main()

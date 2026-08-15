@@ -240,37 +240,36 @@ def show():
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
+
                 if st.button(f"Study '{rec}'", key=f"rec_btn_{idx}", use_container_width=True):
                     st.session_state.load_recommended_topic = rec
                     st.session_state.navigation_selection = "📖 Learning Hub"
                     st.rerun()
+
         else:
             st.markdown("""
             <div class='glass-card' style='padding: 14px; margin-bottom: 10px;'>
                 <p style='margin: 0; color: #ddd;'>Start by asking ConceptBridge AI any academic or technical concept in the Learning Hub!</p>
             </div>
             """, unsafe_allow_html=True)
+
             if st.button("🚀 Explore Your First Topic", key="btn_first_topic", type="primary", use_container_width=True):
-                st.session_state.navigation_selection = "📖 Learning Hub"
-                st.rerun()
-                    <span style='color: #4D96FF; font-size: 0.8rem; font-weight:600;'>Recommended</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button(f"Study '{rec}'", key=f"rec_btn_{idx}", use_container_width=True):
-                st.session_state.load_recommended_topic = rec
                 st.session_state.navigation_selection = "📖 Learning Hub"
                 st.rerun()
 
     # 4. RECENT ACTIVITY
     st.markdown("---")
     st.markdown("### 📜 Recent Learning Activity")
+
     if db_history:
         for idx, hist in enumerate(db_history[:5]):
             time_str = hist.get("created_at", "Recent")
+
             if " " in time_str:
                 time_str = time_str.split(" ")[0]
+
             level_badge = hist.get("explanation_level", "beginner").upper()
+
             st.markdown(f"""
             <div class='glass-card' style='padding: 12px; margin-bottom: 8px;'>
                 <div style='display: flex; justify-content: space-between; align-items: center;'>

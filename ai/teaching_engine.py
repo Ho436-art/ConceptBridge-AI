@@ -70,7 +70,8 @@ def _resolve_learner_difficulty(learner_profile: Optional[LearnerProfile] = None
 def explain_concept(
     concept: str,
     learner_profile: Optional[Union[LearnerProfile, Dict[str, Any]]] = None,
-    style_override: Optional[str] = None
+    style_override: Optional[str] = None,
+    context_document: Optional[str] = None
 ) -> ConceptExplanation:
     """
     Core AI Teaching Engine entry point with Ground-Truth Factuality Pipeline.
@@ -79,11 +80,16 @@ def explain_concept(
         concept (str): Concept requested by user (e.g. 'Explain Graph Coloring', 'Recursion').
         learner_profile (LearnerProfile or dict, optional): Current learner profile.
         style_override (str, optional): Target pedagogical style (e.g. 'super_simple', 'step_by_step').
+        context_document (str, optional): Attached document text or PDF excerpt.
         
     Returns:
         ConceptExplanation: Strongly typed, structured learning response with real diagram.
     """
     clean_concept = _normalize_concept_query(concept) or concept.strip()
+    if clean_concept.lower() in ["this document", "this pdf", "this file", "this code", "this image", "attached file"] and context_document:
+        # Extract title from context document
+        first_line = context_document.strip().split("\n")[0][:40].strip("- ")
+        clean_concept = first_line if first_line else "Uploaded Document Analysis"
     
     # Handle dict input for interoperability
     profile_obj: Optional[LearnerProfile] = None
@@ -107,7 +113,7 @@ def explain_concept(
     diag_type, diag_code, diag_caption = get_diagram_for_concept(clean_concept)
 
     # 3. If verified ground-truth exists, prioritize accuracy
-    if verified_data:
+    if verified_data and not context_document:
         json_data = dict(verified_data)
         json_data["difficulty"] = target_level
         json_data["style_used"] = target_style
@@ -117,10 +123,11 @@ def explain_concept(
             json_data["real_world_analogy"] = f"Imagine in super simple terms: {json_data['simple_explanation']}"
     else:
         # Query LLM with strict factual grounding prompt
+        doc_section = f"\n\nATTACHED REFERENCE CONTEXT / DOCUMENT:\n{context_document}\nExplain the concept in accordance with this material." if context_document else ""
         prompt = (
             f"Concept: '{clean_concept}'\n"
             f"Target Learner Knowledge Level: {target_level}\n"
-            f"Pedagogical Style: {target_style}\n\n"
+            f"Pedagogical Style: {target_style}{doc_section}\n\n"
             f"STRICT FACTUALITY CONSTRAINTS:\n"
             f"1. Explain '{clean_concept}' with 100% mathematical and technical accuracy.\n"
             f"2. Never invent formulas, non-existent algorithm properties, or pseudo-code.\n"
