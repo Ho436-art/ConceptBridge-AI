@@ -45,6 +45,8 @@ def show():
         st.session_state.quiz_answered = False
     if "transcribed_text_buffer" not in st.session_state:
         st.session_state.transcribed_text_buffer = ""
+    if "composer_key_counter" not in st.session_state:
+        st.session_state.composer_key_counter = 0
     if "attached_doc_context" not in st.session_state:
         st.session_state.attached_doc_context = None
     if "attached_doc_name" not in st.session_state:
@@ -73,21 +75,23 @@ def show():
     )
 
     # 2. PRIMARY MULTIMODAL COMPOSER CARD
+    current_composer_key = f"composer_input_{st.session_state.composer_key_counter}"
+
     with st.container():
         st.markdown("<div style='background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px; margin-bottom: 20px;'>", unsafe_allow_html=True)
         
-        # Long Text Area for Question
+        # Long Text Area for Question with safely incremented key
         user_typed_query = st.text_area(
             "Ask anything you want to learn...",
             value=st.session_state.transcribed_text_buffer,
-            placeholder="Ask anything you want to learn (e.g. 'Explain recursion', 'What is a transistor?', 'Why is binary search faster?', 'Explain TCP/IP like I am a beginner')...",
+            placeholder="Ask anything you want to learn (e.g. 'Explain recursion', 'What is a transistor?', 'Why does a refrigerator keep food cold?', 'Explain TCP/IP like I am a beginner')...",
             height=75,
-            key="main_composer_textarea",
+            key=current_composer_key,
             label_visibility="collapsed"
         )
         
-        # Action Toolbar Row: 📎 Attach File | 🎤 Speak (Mic) | ➤ Send
-        col_attach, col_speak, col_send = st.columns([1.5, 1.5, 1])
+        # Action Toolbar Row: 📎 Attach File | 🎤 Speak (Mic) | ➤ Send | 🧹 Reset
+        col_attach, col_speak, col_send = st.columns([1.5, 1.5, 1.2])
         
         with col_attach:
             with st.popover("📎 Attach File (PDF / Image)"):
@@ -115,6 +119,7 @@ def show():
                             st.session_state.transcribed_text_buffer = recognized_text
                             st.success(f"Transcribed: *\"{recognized_text}\"*")
                             if st.button("Apply to Input Box", key="btn_apply_speech"):
+                                st.session_state.composer_key_counter += 1
                                 st.rerun()
                         elif not success:
                             st.warning(f"⚠️ {recognized_text}")
@@ -128,8 +133,8 @@ def show():
                     
                     if query_to_process or doc_to_process:
                         final_prompt = query_to_process if query_to_process else f"Explain the attached file: {st.session_state.attached_doc_name}"
+                        st.session_state.composer_key_counter += 1
                         st.session_state.transcribed_text_buffer = ""
-                        st.session_state.main_composer_textarea = ""
                         st.session_state.attached_doc_context = None
                         st.session_state.attached_doc_name = None
                         _process_new_user_prompt(final_prompt, user_id, context_document=doc_to_process)
@@ -142,7 +147,7 @@ def show():
                     st.session_state.active_concept = None
                     st.session_state.current_explanation = None
                     st.session_state.transcribed_text_buffer = ""
-                    st.session_state.main_composer_textarea = ""
+                    st.session_state.composer_key_counter += 1
                     st.session_state.attached_doc_context = None
                     st.session_state.attached_doc_name = None
                     st.rerun()
