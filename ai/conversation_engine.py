@@ -24,11 +24,11 @@ CASUAL_PATTERNS = [
 ]
 
 SIMPLIFY_PATTERNS = [
-    r"(make\s+it\s+simpler|explain\s+simpler|explain\s+like\s+i'?m\s+(5|10)|too\s+complex|too\s+hard|simplify)"
+    r"(make\s+(it|that|this)\s+simpler|explain\s+(it|that|this)\s+simpler|explain\s+simpler|explain\s+like\s+i'?m\s+(5|10)|too\s+complex|too\s+hard|simplify\s+(it|that|this)?|in\s+simpler\s+words)"
 ]
 
 EXAMPLE_PATTERNS = [
-    r"(give\s+(me\s+)?another\s+example|more\s+examples?|another\s+analogy|another\s+code\s+example)"
+    r"(give\s+(me\s+)?another\s+example|more\s+examples?|another\s+analogy|another\s+code\s+example|show\s+me\s+code\s+for\s+(it|this|that))"
 ]
 
 CONFUSED_PATTERNS = [
@@ -47,32 +47,59 @@ class MessageIntent:
 
 
 def classify_intent(message: str, active_concept: Optional[str] = None) -> str:
-    """Classifies user intent from message text."""
+    """
+    Classifies user intent from natural language message.
+    Accurately distinguishes between new topics, clarifications, and contextual follow-ups.
+    """
     clean = message.strip().lower()
 
+    # 1. Greetings
     for pattern in GREETING_PATTERNS:
         if re.search(pattern, clean):
             return MessageIntent.GREETING
 
+    # 2. Casual Chat
     for pattern in CASUAL_PATTERNS:
         if re.search(pattern, clean):
             return MessageIntent.CASUAL
 
+    # 3. Simplify active concept
     for pattern in SIMPLIFY_PATTERNS:
         if re.search(pattern, clean):
             return MessageIntent.SIMPLIFY
 
+    # 4. Another example for active concept
     for pattern in EXAMPLE_PATTERNS:
         if re.search(pattern, clean):
             return MessageIntent.ANOTHER_EXAMPLE
 
+    # 5. Still confused about active concept
     for pattern in CONFUSED_PATTERNS:
         if re.search(pattern, clean):
             return MessageIntent.STILL_CONFUSED
 
-    # If there is an active concept and the question is short / contextual, treat as follow-up
-    if active_concept and len(clean.split()) <= 15 and not clean.startswith(("explain", "what is", "teach me")):
-        if any(w in clean for w in ["why", "how", "what if", "where", "can it", "difference", "complexity", "time"]):
+    # 6. Follow-up Question on Active Concept vs New Concept
+    if active_concept:
+        # If query has demonstratives / pronouns pointing to active concept:
+        # e.g. "what is its time complexity?", "why does it call itself?", "how does it work?"
+        has_pronoun_ref = bool(re.search(r"\b(its?|itself|this|that|these|those)\b", clean))
+        
+        # Explicit new topic introduction (e.g. "what is a transistor?", "explain binary search", "why does a refrigerator...")
+        introduces_new_topic = bool(re.search(
+            r"^(explain\s+(?!that|this|it)\w+|what\s+is\s+(a\s+|an\s+|the\s+(?!time\s+|space\s+|drawback|advantage|difference|best\s+|worst\s+))\w+|why\s+does\s+(a\s+|an\s+)\w+|how\s+does\s+(a\s+|an\s+)\w+)",
+            clean
+        ))
+
+        if has_pronoun_ref and not introduces_new_topic:
+            return MessageIntent.FOLLOW_UP
+
+        # Common short follow-up questions (e.g. "time complexity?", "worst case?")
+        short_followup_patterns = [
+            r"^(what\s+is\s+(the\s+)?)?(time|space)\s+complexity\??$",
+            r"^(what\s+about\s+(the\s+)?)?(worst|best|average)\s+case\??$",
+            r"^(show\s+me\s+)?(code|pseudocode|implementation)\??$"
+        ]
+        if any(re.search(pat, clean) for pat in short_followup_patterns):
             return MessageIntent.FOLLOW_UP
 
     return MessageIntent.NEW_CONCEPT
@@ -112,7 +139,7 @@ def handle_chat_message(
     if intent == MessageIntent.CASUAL:
         clean = user_message.lower().strip()
         if "thank" in clean or "cool" in clean or "awesome" in clean or "ok" in clean:
-            msg = "You're very welcome! Let me know if you want another example or ready for the next topic! 🚀"
+            msg = "You're very welcome! Let me know if you want another example or are ready for the next topic! 🚀"
         elif "who are you" in clean or "what can you do" in clean:
             msg = "I'm ConceptBridge AI! I bridge the gap from *'I don't understand'* to *'Oh, it's that easy!'* by teaching academic concepts through real-world analogies, multi-tier breakdowns, and interactive check questions."
         else:
@@ -127,23 +154,33 @@ def handle_chat_message(
     # 3. MAKE SIMPLER
     if intent == MessageIntent.SIMPLIFY:
         target_concept = active_concept or "Recursion"
-        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="super_simple", context_document=context_document)
+        exp = explain_concept(
+            f"Explain {target_concept} in very simple words",
+            learner_profile=learner_profile,
+            style_override="super_simple",
+            context_document=context_document
+        )
         return {
             "intent": intent,
-            "text_response": f"Let's break down **{target_concept}** in super simple, plain English without jargon:",
+            "text_response": f"Let's break down **{exp.concept}** in super simple, plain English without jargon:",
             "explanation": exp.to_dict(),
-            "active_concept": target_concept
+            "active_concept": exp.concept
         }
 
     # 4. ANOTHER EXAMPLE
     if intent == MessageIntent.ANOTHER_EXAMPLE:
         target_concept = active_concept or "Recursion"
-        exp = explain_concept(target_concept, learner_profile=learner_profile, style_override="practical_code", context_document=context_document)
+        exp = explain_concept(
+            f"Give another practical example of {target_concept}",
+            learner_profile=learner_profile,
+            style_override="practical_code",
+            context_document=context_document
+        )
         return {
             "intent": intent,
-            "text_response": f"Here is an alternative practical walk-through for **{target_concept}**:",
+            "text_response": f"Here is an alternative practical walk-through for **{exp.concept}**:",
             "explanation": exp.to_dict(),
-            "active_concept": target_concept
+            "active_concept": exp.concept
         }
 
     # 5. STILL CONFUSED
@@ -159,25 +196,27 @@ def handle_chat_message(
 
     # 6. CONTEXTUAL FOLLOW-UP QUESTION
     if intent == MessageIntent.FOLLOW_UP and active_concept and not context_document:
-        # Generate targeted answer to the follow-up question in context of active concept
-        prompt = (
-            f"Concept in Context: '{active_concept}'\n"
-            f"Student Follow-up Question: '{user_message}'\n\n"
-            f"Answer the student's specific follow-up question concisely, accurately, and encouragingly in 2-3 short paragraphs."
-        )
-        llm_reply = query_llm_json(
-            prompt=prompt,
-            system_prompt="You are ConceptBridge AI. Answer the student's specific follow-up question concisely and accurately.",
-            fallback_concept=active_concept
-        )
+        from ai.llm_client import query_llm_text
         
-        if llm_reply and isinstance(llm_reply, dict) and "simple_explanation" in llm_reply:
-            ans_text = f"**Regarding {active_concept}:**\n\n" + llm_reply["simple_explanation"]
+        system_prompt = (
+            f"You are ConceptBridge AI, a helpful, empathetic learning companion. "
+            f"The student is currently learning about '{active_concept}' and is asking a specific follow-up question. "
+            f"Answer the student's follow-up question directly, clearly, and concisely in 2-3 friendly paragraphs. "
+            f"Do not output robotic boilerplate. Answer specifically for {active_concept}."
+        )
+        prompt = (
+            f"Active Topic: '{active_concept}'\n"
+            f"Student's Follow-up Question: '{user_message}'\n\n"
+            f"Please answer the student's question specifically in relation to '{active_concept}'."
+        )
+        ai_reply = query_llm_text(prompt=prompt, system_prompt=system_prompt)
+        
+        if ai_reply and len(ai_reply) > 20:
+            ans_text = ai_reply
         else:
             ans_text = (
-                f"**Regarding {active_concept}:**\n\n"
-                f"To answer your question *'{user_message}'*: In {active_concept}, this mechanism ensures "
-                f"proper state transitions and boundary control without exhausting system resources."
+                f"Regarding **{active_concept}**: In response to *'{user_message}'*, "
+                f"this mechanism operates according to the fundamental invariants and constraints of {active_concept}."
             )
 
         return {
