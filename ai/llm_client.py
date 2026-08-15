@@ -234,22 +234,24 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
 
     # Try Gemini if key provided
     if gemini_key and len(gemini_key) > 10:
-        try:
-            import urllib.request
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [
-                    {"parts": [{"text": f"{system_prompt}\n\nTask:\n{prompt}\nRespond only in valid JSON."}]}
-                ]
-            }
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=3.0) as response:
-                res_data = json.loads(response.read().decode("utf-8"))
-                content = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(_clean_json_string(content))
-        except Exception:
-            pass  # Gracefully fall back to verified knowledge base
+        import urllib.request
+        candidate_models = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-pro"]
+        for model_name in candidate_models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [
+                        {"parts": [{"text": f"{system_prompt}\n\nTask:\n{prompt}\nRespond only in valid JSON."}]}
+                    ]
+                }
+                req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+                with urllib.request.urlopen(req, timeout=3.5) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                    content = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(_clean_json_string(content))
+            except Exception:
+                continue
 
     return None
 
