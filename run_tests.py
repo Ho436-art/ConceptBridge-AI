@@ -6,9 +6,13 @@ Usage:
     python run_tests.py
 """
 
+import os
 import sys
 import unittest
 from pathlib import Path
+
+# Enable fast deterministic test mode
+os.environ["TESTING"] = "true"
 
 # Add project root to sys.path
 project_root = Path(__file__).resolve().parent

@@ -197,6 +197,9 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
     Attempts to call available LLM API (OpenAI or Gemini) if keys exist.
     Returns parsed dictionary or None if API is unavailable.
     """
+    if os.getenv("TESTING", "").lower() == "true":
+        return None
+
     import socket
     socket.setdefaulttimeout(2.5)
 
@@ -229,8 +232,8 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
         except Exception:
             pass  # Fall through to Gemini or fallback
 
-    # Try Gemini if key provided (standard AIza prefix)
-    if gemini_key and (gemini_key.startswith("AIza") or os.getenv("USE_LIVE_LLM", "").lower() == "true"):
+    # Try Gemini if key provided
+    if gemini_key and len(gemini_key) > 10:
         try:
             import urllib.request
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
@@ -241,12 +244,12 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
                 ]
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=2.0) as response:
+            with urllib.request.urlopen(req, timeout=3.0) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 content = res_data["candidates"][0]["content"]["parts"][0]["text"]
                 return json.loads(_clean_json_string(content))
         except Exception:
-            pass
+            pass  # Gracefully fall back to verified knowledge base
 
     return None
 
