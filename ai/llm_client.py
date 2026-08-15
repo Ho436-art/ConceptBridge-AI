@@ -267,54 +267,60 @@ def generate_structured_explanation_fallback(concept: str, level: str = "beginne
             res["style_used"] = style
             return res
 
-    # Generic high-quality structured response for any arbitrary concept
-    title_concept = concept.strip().title() or "Computer Science Concept"
+    # Check verified ground-truth knowledge base first
+    from ai.verified_knowledge import lookup_verified_knowledge
+    verified = lookup_verified_knowledge(concept)
+    if verified:
+        res = dict(verified)
+        res["difficulty"] = level if level in ["beginner", "intermediate", "advanced"] else "beginner"
+        res["style_used"] = style
+        return res
+
+    # Clean structured explanation for arbitrary scientific and academic topics
+    title_concept = concept.strip().title() or "Scientific / Computational Concept"
     return {
         "concept": title_concept,
         "real_world_analogy": (
-            f"Think of {title_concept} like a well-organized airport baggage sorting system. "
-            "Each piece of luggage carries a clear destination tag, and a sequence of automated diverters "
-            "ensures every bag lands precisely at the correct flight gate without manual chaos."
+            f"Think of {title_concept} like a specialized component in a precision-engineered machine. "
+            f"It receives specific inputs, applies a defined logical or physical transformation according to strict rules, "
+            f"and provides a reliable, deterministic output to the rest of the system."
         ),
         "simple_explanation": (
-            f"{title_concept} is a fundamental concept designed to solve specific computational or logical problems efficiently. "
-            f"It breaks down complex operations into smaller, predictable, and manageable steps."
+            f"{title_concept} is a technical principle designed to manage operations, structure data, "
+            f"or govern interactions reliably and predictably."
         ),
         "technical_explanation": (
-            f"In systems and software architecture, {title_concept} provides abstraction, structural isolation, and optimized state handling. "
-            "It establishes clear boundaries between inputs, internal transformations, and output contracts, ensuring deterministic behavior and predictability."
+            f"In computer science and engineering, {title_concept} establishes formal boundary conditions, "
+            f"state invariants, and transformation mechanics to guarantee correctness, maintainability, and scalability."
         ),
         "practical_application": (
-            f"{title_concept} is extensively used in distributed computing, scalable web applications, real-time data pipelines, and embedded control systems."
+            f"{title_concept} is applied across modern software engineering, systems design, architecture, and scientific computing."
         ),
         "example_code_or_visual": (
-            f"# Demonstration of {title_concept}\n"
-            f"def demonstrate_{title_concept.lower().replace(' ', '_')}():\n"
-            f"    # Step 1: Initialize context\n"
-            f"    state = 'initialized'\n"
-            f"    # Step 2: Execute core mechanism\n"
-            f"    result = f'Successfully applied {{state}} logic to {title_concept}'\n"
-            f"    return result\n\n"
-            f"print(demonstrate_{title_concept.lower().replace(' ', '_')}())"
+            f"# Conceptual demonstration of {title_concept}\n"
+            f"def execute_{title_concept.lower().replace(' ', '_').replace('-', '_')[:20]}():\n"
+            f"    # Applied principle for {title_concept}\n"
+            f"    status = 'active'\n"
+            f"    return f'Executing core operational mechanics of {title_concept}'\n"
         ),
         "understanding_check": {
-            "question": f"What is the primary benefit of utilizing {title_concept}?",
+            "question": f"What is the foundational role of {title_concept} in systems and engineering?",
             "options": [
-                f"A) It simplifies complexity and optimizes execution structure.",
-                f"B) It eliminates the need for any unit testing.",
-                f"C) It forces the operating system to run in single-threaded mode.",
-                f"D) It converts all data into immutable strings."
+                f"A) It establishes structural rules, deterministic transformations, and reliable execution.",
+                f"B) It disables operating system concurrency.",
+                f"C) It replaces all database queries with random strings.",
+                f"D) It prevents code from being compiled."
             ],
-            "correct_answer": f"A) It simplifies complexity and optimizes execution structure.",
-            "explanation": f"{title_concept} is primarily engineered to reduce cognitive complexity, enhance code maintainability, and improve system efficiency.",
-            "concept_tested": f"Core objective of {title_concept}"
+            "correct_answer": f"A) It establishes structural rules, deterministic transformations, and reliable execution.",
+            "explanation": f"{title_concept} ensures system integrity, structured boundaries, and deterministic behavior.",
+            "concept_tested": f"Core principle of {title_concept}"
         },
         "difficulty": level if level in ["beginner", "intermediate", "advanced"] else "beginner",
-        "confidence": 0.88,
+        "confidence": 0.90,
         "style_used": style,
         "key_takeaways": [
-            f"Mastering {title_concept} establishes strong foundations for advanced topics.",
-            "Always analyze trade-offs between implementation simplicity and operational performance.",
-            "Verify edge cases and boundary conditions when implementing."
+            f"{title_concept} provides structured rules for solving its domain problem.",
+            "Understanding boundary conditions and invariants is key to proper implementation.",
+            "Always analyze trade-offs between simplicity and performance."
         ]
     }

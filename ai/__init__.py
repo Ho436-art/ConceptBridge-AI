@@ -28,6 +28,7 @@ from .refresh_decision import (
 from .conversation_engine import handle_chat_message, classify_intent
 from .diagram_generator import get_diagram_for_concept
 from .verified_knowledge import lookup_verified_knowledge
+from .speech_engine import transcribe_audio
 
 __all__ = [
     "explain_concept",
@@ -46,4 +47,5 @@ __all__ = [
     "classify_intent",
     "get_diagram_for_concept",
     "lookup_verified_knowledge",
+    "transcribe_audio"
 ]

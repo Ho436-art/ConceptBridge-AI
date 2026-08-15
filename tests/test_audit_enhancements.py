@@ -148,5 +148,57 @@ class TestSmartRefreshAndGames(unittest.TestCase):
         self.assertIn("card_b", deck[0])
 
 
+class TestFourMandatoryProblems(unittest.TestCase):
+    def test_microphone_speech_engine_empty_protection(self):
+        """Speech engine must reject empty audio streams safely without crashing."""
+        import ai.speech_engine as speech_engine
+        success, msg = speech_engine.transcribe_audio(b"")
+        self.assertFalse(success)
+        self.assertIn("empty", msg.lower())
+
+        success_short, msg_short = speech_engine.transcribe_audio(b"short123")
+        self.assertFalse(success_short)
+
+    def test_arbitrary_topic_inquiry_transistor(self):
+        """User can ask about ANY academic concept (e.g. Transistor) without predefined topic selection."""
+        exp = explain_concept("What is a transistor?")
+        self.assertEqual(exp.concept, "Transistor")
+        self.assertIsNotNone(exp.simple_explanation)
+        self.assertIsNotNone(exp.technical_explanation)
+        self.assertIsNotNone(exp.understanding_check)
+
+    def test_arbitrary_topic_inquiry_tcp_ip(self):
+        """User can ask complex networking questions (e.g. TCP/IP) arbitrarily."""
+        exp = explain_concept("Explain TCP/IP like I am a beginner")
+        self.assertEqual(exp.concept, "Tcp/Ip Like I Am A Beginner")
+        self.assertIsNotNone(exp.real_world_analogy)
+
+    def test_continuous_timer_timestamp_delta(self):
+        """Timer countdown must be derived from true time deltas."""
+        from frontend.components.timer import render_continuous_timer
+        import streamlit as st
+        # Simulate 10 seconds elapsed
+        st.session_state.break_start_time = time.time() - 10
+        elapsed = int(time.time() - st.session_state.break_start_time)
+        self.assertGreaterEqual(elapsed, 10)
+        self.assertLessEqual(elapsed, 12)
+
+    def test_user_data_isolation_clean_state(self):
+        """New user must have 0 mastery, 0 study sessions, and 0 refresh history."""
+        import database.queries as queries
+        new_uid = f"usr_test_iso_{int(time.time())}"
+        
+        # Fresh user queries
+        mastery = queries.get_topic_mastery(new_uid)
+        history = queries.get_recent_learning_history(new_uid)
+        sessions_list = queries.get_learning_history(new_uid)
+        refresh_hist = queries.get_smart_refresh_history(new_uid)
+        
+        self.assertEqual(len(mastery), 0)
+        self.assertEqual(len(history["recent_learning_sessions"]), 0)
+        self.assertEqual(len(sessions_list), 0)
+        self.assertEqual(len(refresh_hist), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

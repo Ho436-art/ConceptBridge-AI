@@ -39,6 +39,8 @@ def show():
         st.session_state.current_explanation = None
     if "quiz_answered" not in st.session_state:
         st.session_state.quiz_answered = False
+    if "voice_transcription" not in st.session_state:
+        st.session_state.voice_transcription = None
 
     # Check if a recommended topic was clicked from Dashboard
     if "load_recommended_topic" in st.session_state and st.session_state.load_recommended_topic:
@@ -47,51 +49,81 @@ def show():
         _process_new_user_prompt(f"Explain {rec_topic}", user_id)
         st.rerun()
 
-    # Top Multimodal & Quick Prompt Toolbar
-    with st.expander("📎 Multimodal Input (Image / Audio Upload)", expanded=False):
-        col_img, col_aud = st.columns(2)
+    # 1. MULTIMODAL TOOLBAR (LIVE MICROPHONE RECORDING & IMAGE UPLOAD)
+    with st.expander("🎙️ / 📸 Voice Recording & Image Question Upload", expanded=bool(st.session_state.voice_transcription)):
+        col_mic, col_img = st.columns(2)
+        
+        with col_mic:
+            st.markdown("#### 🎙️ Live Microphone Input")
+            st.caption("Click the red record button, speak your question, then click stop.")
+            
+            recorded_audio = st.audio_input("Record voice question:", key="live_voice_capture")
+            
+            if recorded_audio:
+                audio_bytes = recorded_audio.getvalue()
+                if audio_bytes and len(audio_bytes) > 500:
+                    import ai.speech_engine as speech_engine
+                    success, recognized_text = speech_engine.transcribe_audio(audio_bytes)
+                    
+                    if success and recognized_text:
+                        st.session_state.voice_transcription = recognized_text
+                    else:
+                        st.warning(f"⚠️ {recognized_text}")
+
+            # If voice transcription is available, allow editing before submission
+            if st.session_state.voice_transcription:
+                st.markdown(f"**Recognized Speech:**")
+                edited_voice_prompt = st.text_input(
+                    "Edit your spoken question if needed:",
+                    value=st.session_state.voice_transcription,
+                    key="voice_input_editor"
+                )
+                col_v1, col_v2 = st.columns([2, 1])
+                with col_v1:
+                    if st.button("🚀 Ask ConceptBridge", key="btn_submit_voice", type="primary", use_container_width=True):
+                        if edited_voice_prompt.strip():
+                            transcribed_query = edited_voice_prompt.strip()
+                            st.session_state.voice_transcription = None
+                            _process_new_user_prompt(transcribed_query, user_id)
+                            st.rerun()
+                with col_v2:
+                    if st.button("🗑️ Clear", key="btn_clear_voice", use_container_width=True):
+                        st.session_state.voice_transcription = None
+                        st.rerun()
+
         with col_img:
+            st.markdown("#### 📸 Homework / Diagram Image")
+            st.caption("Upload a diagram, math equation, or notes photo.")
             uploaded_image = st.file_uploader(
-                "📸 Upload homework diagram or math question image:",
+                "Upload concept image:",
                 type=["png", "jpg", "jpeg", "webp"],
                 key="chat_image_upload"
             )
             if uploaded_image:
-                st.image(uploaded_image, caption="Uploaded concept question", width=300)
-                if st.button("🔍 Analyze Image Question", key="btn_img_analyze"):
+                st.image(uploaded_image, caption="Uploaded concept question", width=260)
+                if st.button("🔍 Explain Concept in Image", key="btn_img_analyze", type="primary", use_container_width=True):
                     _process_new_user_prompt(f"Explain the concept shown in this diagram/image ({uploaded_image.name})", user_id)
                     st.rerun()
-                    
-        with col_aud:
-            uploaded_audio = st.file_uploader(
-                "🎙️ Voice question / audio recording:",
-                type=["wav", "mp3", "m4a", "ogg"],
-                key="chat_audio_upload"
-            )
-            if uploaded_audio:
-                st.audio(uploaded_audio)
-                if st.button("🎤 Transcribe & Ask Voice Query", key="btn_aud_ask"):
-                    _process_new_user_prompt("Explain the recorded voice query concept", user_id)
-                    st.rerun()
 
-    # Quick Suggestion Pills
-    st.markdown("<div style='margin-bottom: 12px;'>", unsafe_allow_html=True)
+    # 2. QUICK EXAMPLE SUGGESTIONS (Optional Example Chips)
+    st.markdown("<div style='margin-bottom: 10px;'>", unsafe_allow_html=True)
+    st.caption("💡 Quick Example Topics (Click any or type your own question below):")
     col_p1, col_p2, col_p3, col_p4 = st.columns(4)
     with col_p1:
-        if st.button("💡 Explain Graph Coloring", key="pill_graph"):
-            _process_new_user_prompt("Explain Graph Coloring", user_id)
+        if st.button("💡 What is a Transistor?", key="pill_transistor", use_container_width=True):
+            _process_new_user_prompt("What is a Transistor?", user_id)
             st.rerun()
     with col_p2:
-        if st.button("💡 Explain Recursion", key="pill_rec"):
-            _process_new_user_prompt("Explain Recursion", user_id)
+        if st.button("💡 Explain TCP/IP", key="pill_tcp", use_container_width=True):
+            _process_new_user_prompt("Explain TCP/IP like I am a beginner", user_id)
             st.rerun()
     with col_p3:
-        if st.button("💡 Database Indexing", key="pill_db"):
-            _process_new_user_prompt("Explain Database Indexing", user_id)
+        if st.button("💡 Graph Coloring", key="pill_graph", use_container_width=True):
+            _process_new_user_prompt("Explain Graph Coloring", user_id)
             st.rerun()
     with col_p4:
-        if st.button("💡 What is an API?", key="pill_api"):
-            _process_new_user_prompt("What is an API?", user_id)
+        if st.button("💡 Binary Search vs Linear", key="pill_bsearch", use_container_width=True):
+            _process_new_user_prompt("Why is binary search faster than linear search?", user_id)
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
