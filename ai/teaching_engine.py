@@ -35,17 +35,27 @@ def _normalize_concept_query(concept_query: str) -> str:
     """Extract clean concept name from user prompt."""
     query = concept_query.strip()
     # Remove conversational prefixes
-    patterns = [
+    prefix_patterns = [
         r"^explain\s+(to\s+me\s+)?(what\s+is\s+)?(the\s+concept\s+of\s+)?",
         r"^what\s+is\s+(a\s+|an\s+|the\s+)?",
+        r"^why\s+is\s+",
         r"^how\s+does\s+",
         r"^teach\s+me\s+(about\s+)?",
         r"^can\s+you\s+explain\s+",
         r"^tell\s+me\s+about\s+",
         r"^give\s+me\s+an\s+explanation\s+of\s+"
     ]
-    for pattern in patterns:
+    for pattern in prefix_patterns:
         query = re.sub(pattern, "", query, flags=re.IGNORECASE).strip()
+    
+    # Remove trailing style / fluff modifiers
+    suffix_patterns = [
+        r"\s+(in\s+very\s+simple\s+words|in\s+simple\s+words|in\s+plain\s+english|like\s+i'?m\s+\d+|with\s+a\s+real[\s-]world\s+example|with\s+examples?|with\s+code|step\s+by\s+step|for\s+beginners?)$",
+        r"\s+(please|thanks?)$"
+    ]
+    for pattern in suffix_patterns:
+        query = re.sub(pattern, "", query, flags=re.IGNORECASE).strip()
+
     return query.rstrip("?.!").strip()
 
 
@@ -77,7 +87,7 @@ def explain_concept(
     Core AI Teaching Engine entry point with Ground-Truth Factuality Pipeline.
     
     Args:
-        concept (str): Concept requested by user (e.g. 'Explain Graph Coloring', 'Recursion').
+        concept (str): Concept or full question requested by user (e.g. 'Explain linear search in very simple words').
         learner_profile (LearnerProfile or dict, optional): Current learner profile.
         style_override (str, optional): Target pedagogical style (e.g. 'super_simple', 'step_by_step').
         context_document (str, optional): Attached document text or PDF excerpt.
@@ -85,9 +95,10 @@ def explain_concept(
     Returns:
         ConceptExplanation: Strongly typed, structured learning response with real diagram.
     """
-    clean_concept = _normalize_concept_query(concept) or concept.strip()
+    raw_query = concept.strip()
+    clean_concept = _normalize_concept_query(raw_query) or raw_query
+    
     if clean_concept.lower() in ["this document", "this pdf", "this file", "this code", "this image", "attached file"] and context_document:
-        # Extract title from context document
         first_line = context_document.strip().split("\n")[0][:40].strip("- ")
         clean_concept = first_line if first_line else "Uploaded Document Analysis"
     
@@ -106,34 +117,32 @@ def explain_concept(
     target_level = _resolve_learner_difficulty(profile_obj)
     target_style = style_override or (profile_obj.preferred_style if profile_obj else "analogy_first")
 
-    # 1. Pipeline Step: Verified Ground-Truth Knowledge Lookup
+    # 1. Pipeline Step: Verified Ground-Truth Knowledge Lookup (for fast, 100% verified topics)
     verified_data = lookup_verified_knowledge(clean_concept)
     
     # 2. Pipeline Step: Diagram Resolution
     diag_type, diag_code, diag_caption = get_diagram_for_concept(clean_concept)
 
-    # 3. If verified ground-truth exists, prioritize accuracy
-    if verified_data and not context_document:
+    # 3. If verified ground-truth exists and no custom user document attached, use verified data
+    if verified_data and not context_document and not style_override and "simple words" not in raw_query.lower():
         json_data = dict(verified_data)
         json_data["difficulty"] = target_level
         json_data["style_used"] = target_style
-        
-        # If alternative style was requested, customize text style
-        if target_style == "super_simple":
-            json_data["real_world_analogy"] = f"Imagine in super simple terms: {json_data['simple_explanation']}"
     else:
-        # Query LLM with strict factual grounding prompt
+        # Query Groq LLM with strict factual grounding prompt and full user request context
         doc_section = f"\n\nATTACHED REFERENCE CONTEXT / DOCUMENT:\n{context_document}\nExplain the concept in accordance with this material." if context_document else ""
         prompt = (
-            f"Concept: '{clean_concept}'\n"
+            f"Learner's Actual Question: \"{raw_query}\"\n"
+            f"Extracted Target Topic: \"{clean_concept}\"\n"
             f"Target Learner Knowledge Level: {target_level}\n"
             f"Pedagogical Style: {target_style}{doc_section}\n\n"
-            f"STRICT FACTUALITY CONSTRAINTS:\n"
-            f"1. Explain '{clean_concept}' with 100% mathematical and technical accuracy.\n"
-            f"2. Never invent formulas, non-existent algorithm properties, or pseudo-code.\n"
-            f"3. The real-world analogy MUST mathematically/logically map to the exact structural constraints of {clean_concept}.\n"
-            f"4. Do NOT output generic educational filler like 'X is a fundamental concept used to solve complex problems efficiently'.\n"
-            f"5. Provide an accurate code/example demonstration and an understanding-check question."
+            f"STRICT FACTUALITY AND NAMING CONSTRAINTS:\n"
+            f"1. In the \"concept\" field, return ONLY the clean formal concept name (e.g. \"Linear Search\", \"Recursion\", \"Transistor\"). Do NOT repeat the entire user sentence as the concept name.\n"
+            f"2. Explain '{clean_concept}' with 100% mathematical and technical accuracy.\n"
+            f"3. Never invent formulas, non-existent algorithm properties, or pseudo-code.\n"
+            f"4. The real-world analogy MUST faithfully map to the exact structural mechanics of {clean_concept}.\n"
+            f"5. Do NOT output generic educational filler like 'X is a fundamental concept used to solve complex problems efficiently'.\n"
+            f"6. Provide clean, well-commented code / concrete example and an accurate understanding-check question."
         )
 
         json_data = query_llm_json(

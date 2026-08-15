@@ -30,46 +30,29 @@ def transcribe_audio(audio_bytes: bytes, mime_type: str = "audio/wav") -> Tuple[
     if not audio_bytes or len(audio_bytes) < 800:
         return False, "Recording is empty or too short. Please speak clearly into the microphone."
 
-    # Method 1: Try Groq Whisper (whisper-large-v3-turbo)
+    # Method 1: Try official Groq SDK Whisper (whisper-large-v3-turbo)
+    load_dotenv(override=True)
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     if groq_key and len(groq_key) > 10:
         try:
-            import urllib.request
-            import uuid
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo").strip()
             
-            boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
-            stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
-            
-            # Construct multipart form-data payload
-            body_parts = []
-            # Model field
-            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{stt_model}\r\n".encode("utf-8"))
-            # Language field (English default)
-            body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nen\r\n".encode("utf-8"))
-            # File field
-            body_parts.append(
-                f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"recorded_voice.wav\"\r\nContent-Type: audio/wav\r\n\r\n".encode("utf-8")
-                + audio_bytes
-                + b"\r\n"
+            transcription = client.audio.transcriptions.create(
+                file=("recorded_voice.wav", audio_bytes),
+                model=stt_model,
+                language="en",
+                response_format="json"
             )
-            body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
-            payload = b"".join(body_parts)
             
-            url = "https://api.groq.com/openai/v1/audio/transcriptions"
-            headers = {
-                "Authorization": f"Bearer {groq_key}",
-                "Content-Type": f"multipart/form-data; boundary={boundary}"
-            }
-            req = urllib.request.Request(url, data=payload, headers=headers)
-            with urllib.request.urlopen(req, timeout=6.0) as resp:
-                res_data = json.loads(resp.read().decode("utf-8"))
-                text = res_data.get("text", "").strip()
-                if text:
-                    if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
-                        text = text[1:-1].strip()
-                    return True, text
-        except Exception:
-            pass
+            text = transcription.text.strip() if hasattr(transcription, "text") else ""
+            if text:
+                if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+                    text = text[1:-1].strip()
+                return True, text
+        except Exception as e:
+            print(f"[Groq STT Error] {type(e).__name__}: {e}")
 
     # Method 2: Try Google Gemini Multimodal Audio Transcription
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()

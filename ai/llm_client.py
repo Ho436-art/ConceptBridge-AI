@@ -192,63 +192,123 @@ def _clean_json_string(raw_text: str) -> str:
     return text.strip()
 
 
+def _normalize_json_payload(parsed: Dict[str, Any], fallback_concept: str = "") -> Dict[str, Any]:
+    """Normalizes JSON dictionary fields to match ConceptExplanation schema."""
+    concept = parsed.get("concept") or parsed.get("title") or fallback_concept.title() or "Concept"
+    analogy = parsed.get("real_world_analogy") or parsed.get("analogy") or parsed.get("metaphor") or ""
+    simple = parsed.get("simple_explanation") or parsed.get("explanation") or parsed.get("beginner_explanation") or ""
+    technical = parsed.get("technical_explanation") or parsed.get("technical_mechanics") or parsed.get("technical_deep_dive") or ""
+    practical = parsed.get("practical_application") or parsed.get("real_world_example") or parsed.get("practical_example") or ""
+    code_or_vis = parsed.get("example_code_or_visual") or parsed.get("code_example") or parsed.get("visual_explanation") or "# Code / Example"
+    
+    check_raw = parsed.get("understanding_check") or {}
+    if not isinstance(check_raw, dict):
+        check_raw = {
+            "question": f"What is the key principle behind {concept}?",
+            "options": ["A) Correct conceptual mechanism", "B) False assumption", "C) Unrelated concept"],
+            "correct_answer": "A) Correct conceptual mechanism",
+            "explanation": "Reflects the core principle.",
+            "concept_tested": concept
+        }
+    else:
+        if not check_raw.get("question"):
+            check_raw["question"] = f"What is the key rule of {concept}?"
+        if not check_raw.get("options"):
+            check_raw["options"] = ["A) Correct fundamental mechanism", "B) Common misconception", "C) Unrelated concept"]
+        if not check_raw.get("correct_answer"):
+            check_raw["correct_answer"] = check_raw["options"][0]
+        if not check_raw.get("explanation"):
+            check_raw["explanation"] = "Matches core conceptual mechanics."
+        if not check_raw.get("concept_tested"):
+            check_raw["concept_tested"] = concept
+
+    return {
+        "concept": concept,
+        "real_world_analogy": analogy or f"Imagine {concept} in terms of everyday actions.",
+        "simple_explanation": simple or f"{concept} is a fundamental topic.",
+        "technical_explanation": technical or f"The underlying technical structure of {concept}.",
+        "practical_application": practical or f"Where {concept} is applied in industry.",
+        "example_code_or_visual": code_or_vis,
+        "understanding_check": check_raw,
+        "difficulty": parsed.get("difficulty", "beginner"),
+        "confidence": float(parsed.get("confidence", 0.92)),
+        "style_used": parsed.get("style_used", "analogy_first"),
+        "key_takeaways": parsed.get("key_takeaways", [
+            f"Understanding {concept} establishes strong foundations.",
+            "Analyze operational trade-offs and boundary conditions."
+        ]),
+        "diagram_type": parsed.get("diagram_type", "none"),
+        "diagram_code": parsed.get("diagram_code"),
+        "diagram_caption": parsed.get("diagram_caption", "")
+    }
+
+
 def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", image_b64: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Attempts to call available LLM API (Groq LLaMA-3.3, OpenAI, or Gemini) if keys exist.
-    Returns parsed dictionary or None if API is unavailable.
+    Calls official Groq SDK (Llama-3.3-70b-versatile / Llama-3.2-Vision) with OpenAI & Gemini fallbacks.
+    Returns parsed normalized dictionary or None if API fails.
     """
     if os.getenv("TESTING", "").lower() == "true":
         return None
 
-    import socket
-    socket.setdefaulttimeout(4.0)
+    # Reload .env at runtime to ensure latest keys are present
+    load_dotenv(override=True)
 
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    # 1. PRIMARY PROVIDER: Groq (Llama-3.3-70b-versatile with Vision support)
+    # 1. PRIMARY PROVIDER: Official Groq Python SDK
     if groq_key and len(groq_key) > 10:
-        import urllib.request
-        default_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-        
-        # If image is attached, select Groq Vision model
-        if image_b64:
-            model_to_use = "llama-3.2-11b-vision-preview"
-            user_content = [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
-            ]
-        else:
-            model_to_use = default_model
-            user_content = prompt
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            
+            default_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+            
+            if image_b64:
+                model_to_use = "llama-3.2-11b-vision-preview"
+                user_content = [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+                ]
+            else:
+                model_to_use = default_model
+                user_content = prompt
 
-        candidate_groq_models = [model_to_use, "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
-        for g_model in candidate_groq_models:
             try:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {groq_key}"
-                }
-                payload = {
-                    "model": g_model,
-                    "messages": [
+                completion = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content}
                     ],
-                    "temperature": 0.5,
-                    "response_format": {"type": "json_object"}
-                }
-                req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-                with urllib.request.urlopen(req, timeout=5.0) as response:
-                    res_data = json.loads(response.read().decode("utf-8"))
-                    content = res_data["choices"][0]["message"]["content"]
-                    parsed = json.loads(_clean_json_string(content))
-                    if isinstance(parsed, dict) and "concept" in parsed:
-                        return parsed
-            except Exception:
-                continue
+                    temperature=0.3,
+                    response_format={"type": "json_object"}
+                )
+                raw_content = completion.choices[0].message.content
+                if raw_content:
+                    parsed = json.loads(_clean_json_string(raw_content))
+                    if isinstance(parsed, dict):
+                        return _normalize_json_payload(parsed, fallback_concept=fallback_concept)
+            except Exception as e_json:
+                # If strict json validation fails, retry with standard text completion and clean JSON extraction
+                completion = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=[
+                        {"role": "system", "content": system_prompt + "\nYou MUST return ONLY valid JSON."},
+                        {"role": "user", "content": user_content}
+                    ],
+                    temperature=0.3
+                )
+                raw_content = completion.choices[0].message.content
+                if raw_content:
+                    parsed = json.loads(_clean_json_string(raw_content))
+                    if isinstance(parsed, dict):
+                        return _normalize_json_payload(parsed, fallback_concept=fallback_concept)
+        except Exception as e:
+            # Report real error transparently to console
+            print(f"[Groq SDK Error] {type(e).__name__}: {e}")
 
     # 2. SECONDARY: OpenAI if configured
     if openai_key and openai_key.startswith("sk-") and len(openai_key) > 20:
@@ -257,7 +317,8 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", 
             url = "https://api.openai.com/v1/chat/completions"
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {openai_key}"
+                "Authorization": f"Bearer {openai_key}",
+                "User-Agent": "ConceptBridge/1.0"
             }
             payload = {
                 "model": os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
@@ -269,12 +330,13 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", 
                 "response_format": {"type": "json_object"}
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=3.0) as response:
+            with urllib.request.urlopen(req, timeout=4.0) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 content = res_data["choices"][0]["message"]["content"]
-                return json.loads(_clean_json_string(content))
-        except Exception:
-            pass
+                parsed = json.loads(_clean_json_string(content))
+                return _normalize_json_payload(parsed, fallback_concept=fallback_concept)
+        except Exception as e:
+            print(f"[OpenAI Error] {type(e).__name__}: {e}")
 
     # 3. TERTIARY: Gemini if key provided
     if gemini_key and len(gemini_key) > 10:
@@ -283,17 +345,18 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", 
         for model_name in candidate_models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
-                headers = {"Content-Type": "application/json"}
+                headers = {"Content-Type": "application/json", "User-Agent": "ConceptBridge/1.0"}
                 payload = {
                     "contents": [
                         {"parts": [{"text": f"{system_prompt}\n\nTask:\n{prompt}\nRespond only in valid JSON."}]}
                     ]
                 }
                 req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-                with urllib.request.urlopen(req, timeout=3.5) as response:
+                with urllib.request.urlopen(req, timeout=4.0) as response:
                     res_data = json.loads(response.read().decode("utf-8"))
                     content = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                    return json.loads(_clean_json_string(content))
+                    parsed = json.loads(_clean_json_string(content))
+                    return _normalize_json_payload(parsed, fallback_concept=fallback_concept)
             except Exception:
                 continue
 
@@ -302,43 +365,41 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", 
 
 def query_llm_text(prompt: str, system_prompt: str = "You are a helpful, empathetic learning assistant.") -> Optional[str]:
     """
-    Direct text completion for conversational chat, friendly breaks, or short clarifications.
+    Direct text completion using official Groq SDK for chat, breaks, or short clarifications.
     """
     if os.getenv("TESTING", "").lower() == "true":
         return None
 
+    load_dotenv(override=True)
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    
     if groq_key and len(groq_key) > 10:
         try:
-            import urllib.request
-            url = "https://api.groq.com/openai/v1/chat/completions"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {groq_key}"
-            }
-            payload = {
-                "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                "messages": [
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            model_to_use = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+            completion = client.chat.completions.create(
+                model=model_to_use,
+                messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                "temperature": 0.7,
-                "max_tokens": 300
-            }
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=4.0) as response:
-                res_data = json.loads(response.read().decode("utf-8"))
-                return res_data["choices"][0]["message"]["content"].strip()
-        except Exception:
-            pass
+                temperature=0.7,
+                max_tokens=300
+            )
+            reply = completion.choices[0].message.content
+            if reply:
+                return reply.strip()
+        except Exception as e:
+            print(f"[Groq SDK Text Error] {type(e).__name__}: {e}")
 
     return None
 
 
 def generate_structured_explanation_fallback(concept: str, level: str = "beginner", style: str = "analogy_first") -> Dict[str, Any]:
     """
-    High-fidelity, deterministic pedagogical fallback generator.
-    Ensures tests and offline runs always receive structured, valid learning data.
+    High-fidelity deterministic pedagogical fallback for offline/testing runs.
+    Pulls from verified ground-truth knowledge bases.
     """
     clean_concept = concept.strip().lower()
     for key, data in CURATED_KNOWLEDGE_BASE.items():
@@ -348,7 +409,7 @@ def generate_structured_explanation_fallback(concept: str, level: str = "beginne
             res["style_used"] = style
             return res
 
-    # Check verified ground-truth knowledge base first
+    # Check verified ground-truth knowledge base
     from ai.verified_knowledge import lookup_verified_knowledge
     verified = lookup_verified_knowledge(concept)
     if verified:
@@ -357,51 +418,34 @@ def generate_structured_explanation_fallback(concept: str, level: str = "beginne
         res["style_used"] = style
         return res
 
-    # Clean structured explanation for arbitrary scientific and academic topics
-    title_concept = concept.strip().title() or "Scientific / Computational Concept"
+    # Clear, honest message when unlisted concept cannot reach AI service
+    title_concept = concept.strip().title() or "Concept"
     return {
         "concept": title_concept,
-        "real_world_analogy": (
-            f"Think of {title_concept} like a specialized component in a precision-engineered machine. "
-            f"It receives specific inputs, applies a defined logical or physical transformation according to strict rules, "
-            f"and provides a reliable, deterministic output to the rest of the system."
-        ),
+        "real_world_analogy": f"Could not connect to the live AI service to generate an analogy for {title_concept}.",
         "simple_explanation": (
-            f"{title_concept} is a technical principle designed to manage operations, structure data, "
-            f"or govern interactions reliably and predictably."
+            f"⚠️ ConceptBridge couldn't reach the AI service right now to explain '{title_concept}'. "
+            "Please verify that your GROQ_API_KEY is configured in your .env file and that your internet connection is active."
         ),
-        "technical_explanation": (
-            f"In computer science and engineering, {title_concept} establishes formal boundary conditions, "
-            f"state invariants, and transformation mechanics to guarantee correctness, maintainability, and scalability."
-        ),
-        "practical_application": (
-            f"{title_concept} is applied across modern software engineering, systems design, architecture, and scientific computing."
-        ),
-        "example_code_or_visual": (
-            f"# Conceptual demonstration of {title_concept}\n"
-            f"def execute_{title_concept.lower().replace(' ', '_').replace('-', '_')[:20]}():\n"
-            f"    # Applied principle for {title_concept}\n"
-            f"    status = 'active'\n"
-            f"    return f'Executing core operational mechanics of {title_concept}'\n"
-        ),
+        "technical_explanation": f"Live technical breakdown for '{title_concept}' requires an active AI connection.",
+        "practical_application": "Real-world examples will be dynamically provided once the connection is established.",
+        "example_code_or_visual": f"# Connect to Groq AI to view live code demonstrations for {title_concept}",
         "understanding_check": {
-            "question": f"What is the foundational role of {title_concept} in systems and engineering?",
+            "question": f"How do you enable AI-powered explanations for {title_concept}?",
             "options": [
-                f"A) It establishes structural rules, deterministic transformations, and reliable execution.",
-                f"B) It disables operating system concurrency.",
-                f"C) It replaces all database queries with random strings.",
-                f"D) It prevents code from being compiled."
+                "A) Ensure GROQ_API_KEY is configured in .env",
+                "B) Disable internet access",
+                "C) Delete all database tables"
             ],
-            "correct_answer": f"A) It establishes structural rules, deterministic transformations, and reliable execution.",
-            "explanation": f"{title_concept} ensures system integrity, structured boundaries, and deterministic behavior.",
-            "concept_tested": f"Core principle of {title_concept}"
+            "correct_answer": "A) Ensure GROQ_API_KEY is configured in .env",
+            "explanation": "Setting a valid GROQ_API_KEY allows ConceptBridge AI to generate deep explanations.",
+            "concept_tested": "AI Configuration"
         },
         "difficulty": level if level in ["beginner", "intermediate", "advanced"] else "beginner",
-        "confidence": 0.90,
+        "confidence": 0.0,
         "style_used": style,
         "key_takeaways": [
-            f"{title_concept} provides structured rules for solving its domain problem.",
-            "Understanding boundary conditions and invariants is key to proper implementation.",
-            "Always analyze trade-offs between simplicity and performance."
+            "Check your local .env file for a valid GROQ_API_KEY.",
+            "Ensure the Streamlit application has access to the internet."
         ]
     }

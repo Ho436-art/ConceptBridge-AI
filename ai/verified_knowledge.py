@@ -408,20 +408,29 @@ VERIFIED_KNOWLEDGE_CATALOG: Dict[str, Dict[str, Any]] = {
 }
 
 
+import re
+
+
 def lookup_verified_knowledge(concept_query: str) -> Optional[Dict[str, Any]]:
     """
     Looks up verified, factually ground-truthed knowledge for a concept query.
     Returns structured data if verified match exists, or None.
     """
     clean = concept_query.strip().lower()
+    if not clean:
+        return None
+
     for key, data in VERIFIED_KNOWLEDGE_CATALOG.items():
-        if key in clean or clean in key:
+        # Exact match
+        if clean == key:
             return dict(data)
-        # Check alias synonyms
+        # Word boundary match (e.g. \bapi\b so 'capital' does not match 'api')
+        if re.search(rf"\b{re.escape(key)}\b", clean):
+            return dict(data)
+        # Synonyms
         if "graph" in clean and "color" in clean and key == "graph coloring":
             return dict(data)
-        if "index" in clean and "db" in clean and key == "database indexing":
+        if "indexing" in clean and "database" in clean and key == "database indexing":
             return dict(data)
-        if "rest" in clean and "api" in clean and key == "api":
-            return dict(data)
+
     return None
