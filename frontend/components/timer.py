@@ -2,43 +2,41 @@
 Smart Refresh 5-Minute Timer Component
 Owner: Member 2 (UI/UX) & Member 4 (AI/ML + Smart Refresh)
 
-Guarantees breaks are capped at 5 minutes (300 seconds).
+Guarantees breaks are strictly capped at 5 minutes (300 seconds) using real clock timestamps.
 """
 
 import streamlit as st
 import time
 
+
 def render_refresh_timer(max_seconds: int = 300) -> bool:
     """
-    Displays a countdown timer and progress bar.
-    Returns True if the timer has expired, otherwise False.
+    Displays a real-time countdown timer based on actual clock timestamps.
+    Returns True if the 5-minute cap has expired.
     """
     if "break_start_time" not in st.session_state:
         st.session_state.break_start_time = time.time()
         
-    # Test accelerator option for verification ease
-    fast_timer = st.sidebar.checkbox("⚡ Fast Break (for testing)", value=False, help="Runs the timer 20x faster for testing")
-    speed_factor = 20.0 if fast_timer else 1.0
+    elapsed = int(time.time() - st.session_state.break_start_time)
+    remaining = max(0, max_seconds - elapsed)
     
-    elapsed = (time.time() - st.session_state.break_start_time) * speed_factor
-    remaining = max(0, max_seconds - int(elapsed))
-    
-    progress = remaining / max_seconds
+    progress = max(0.0, min(1.0, remaining / max_seconds))
     mins, secs = divmod(remaining, 60)
     
-    # Custom colored warning when time is low
-    if remaining < 60:
-        st.error(f"⏱️ **Time Remaining: {mins:02d}:{secs:02d}** - Wrap up your activity!")
-    else:
-        st.info(f"⏱️ **Time Remaining: {mins:02d}:{secs:02d}**")
-        
+    col_t1, col_t2 = st.columns([3, 1])
+    with col_t1:
+        if remaining < 60:
+            st.error(f"⏱️ **Time Remaining: {mins:02d}:{secs:02d}** — Wrapping up your 5-minute break!")
+        else:
+            st.info(f"⏱️ **Smart Refresh Countdown: {mins:02d}:{secs:02d}** (5-min cap)")
+    with col_t2:
+        # Quick skip option for demo/testing convenience
+        if st.button("⏭️ Complete Break", key="btn_skip_timer"):
+            st.session_state.break_start_time = time.time() - max_seconds - 1
+            return True
+
     st.progress(progress)
     
-    # Dev override button
-    if st.sidebar.button("⏭️ Simulate Timer End", help="Instantly finish the break for testing"):
-        st.session_state.break_start_time = time.time() - (max_seconds / speed_factor) - 1
-        st.rerun()
-        
     if remaining <= 0:
         return True
         

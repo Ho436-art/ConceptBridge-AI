@@ -1,14 +1,43 @@
 """
 ConceptBridge AI - Data Models
 Type-safe dataclasses for all core database entities with dictionary conversion helpers.
+Includes DictAccessibleMixin to seamlessly support both object attribute access (obj.prop)
+and dictionary-style access (obj['prop'], obj.get('prop', default)).
 """
 
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
+
+class DictAccessibleMixin:
+    """Provides dictionary-like subscript access obj['key'], obj.get('key', default), and 'key' in obj."""
+    def __getitem__(self, item: str) -> Any:
+        val = self.to_dict().get(item)
+        if val is None and hasattr(self, item):
+            val = getattr(self, item)
+        return val
+
+    def get(self, item: str, default: Any = None) -> Any:
+        res = self.to_dict().get(item)
+        if res is not None:
+            return res
+        return getattr(self, item, default)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.to_dict() or hasattr(self, item)
+
+    def keys(self):
+        return self.to_dict().keys()
+
+    def items(self):
+        return self.to_dict().items()
+
+    def values(self):
+        return self.to_dict().values()
 
 
 @dataclass
-class User:
+class User(DictAccessibleMixin):
     """User account entity."""
     user_id: str
     name: str
@@ -18,9 +47,6 @@ class User:
 
     def __str__(self) -> str:
         return self.user_id
-
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict(include_sensitive=True).get(item)
 
     def to_dict(self, include_sensitive: bool = False) -> Dict[str, Any]:
         """Convert to dictionary, omitting password_hash by default."""
@@ -33,7 +59,7 @@ class User:
 
 
 @dataclass
-class LearnerProfile:
+class LearnerProfile(DictAccessibleMixin):
     """Personalized learner profile."""
     profile_id: str
     user_id: str
@@ -43,9 +69,6 @@ class LearnerProfile:
     created_at: str
     updated_at: str
 
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
-
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data["estimated_level"] = self.preferred_level
@@ -54,16 +77,13 @@ class LearnerProfile:
 
 
 @dataclass
-class Topic:
+class Topic(DictAccessibleMixin):
     """Learning topic entity."""
     topic_id: str
     topic_name: str
     subject: str
     difficulty: str
     description: Optional[str] = None
-
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -73,7 +93,7 @@ class Topic:
 
 
 @dataclass
-class Question:
+class Question(DictAccessibleMixin):
     """Question assessment entity."""
     question_id: str
     topic_id: str
@@ -82,15 +102,12 @@ class Question:
     answer: str
     explanation: Optional[str] = None
 
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
-
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
-class LearningSession:
+class LearningSession(DictAccessibleMixin):
     """Learning session tracking entity."""
     session_id: str
     user_id: str
@@ -100,15 +117,12 @@ class LearningSession:
     duration: Optional[int] = None
     topic_name: Optional[str] = None
 
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
-
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
-class Attempt:
+class Attempt(DictAccessibleMixin):
     """Question attempt log entity."""
     attempt_id: str
     user_id: str
@@ -121,15 +135,12 @@ class Attempt:
     question_text: Optional[str] = None
     topic_name: Optional[str] = None
 
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
-
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
-class TopicMastery:
+class TopicMastery(DictAccessibleMixin):
     """Topic mastery score & confidence tracker."""
     user_id: str
     topic_id: str
@@ -138,20 +149,26 @@ class TopicMastery:
     last_updated: str
     topic_name: Optional[str] = None
     subject: Optional[str] = None
-
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
+    status: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        data["title"] = self.topic_name
-        data["category"] = self.subject
+        data["title"] = self.topic_name or self.topic_id
+        data["category"] = self.subject or "Computer Science"
+        if not self.status:
+            if self.mastery_score >= 0.75:
+                data["status"] = "mastered"
+            elif self.mastery_score < 0.40:
+                data["status"] = "struggling"
+            else:
+                data["status"] = "learning"
+        else:
+            data["status"] = self.status
         return data
-        return asdict(self)
 
 
 @dataclass
-class Feedback:
+class Feedback(DictAccessibleMixin):
     """Subjective learner feedback."""
     feedback_id: str
     user_id: str
@@ -160,35 +177,29 @@ class Feedback:
     created_at: str
     topic_name: Optional[str] = None
 
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
-
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
-class Recommendation:
-    """AI-generated next-step recommendation."""
+class Recommendation(DictAccessibleMixin):
+    """Personalized learning recommendation."""
     recommendation_id: str
     user_id: str
     topic_id: str
     recommendation_type: str
     reason: str
     created_at: str
-    completed: bool = False
     topic_name: Optional[str] = None
-
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
+    completed: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
 @dataclass
-class RefreshSession:
-    """Smart Refresh spaced repetition session."""
+class RefreshSession(DictAccessibleMixin):
+    """Smart Refresh activity log."""
     refresh_id: str
     user_id: str
     activity_type: str
@@ -196,9 +207,6 @@ class RefreshSession:
     ended_at: Optional[str] = None
     duration: Optional[int] = None
     completed: bool = False
-
-    def __getitem__(self, item: str) -> Any:
-        return self.to_dict().get(item)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

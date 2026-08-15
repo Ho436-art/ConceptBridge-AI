@@ -74,6 +74,9 @@ class ConceptExplanation(DictAccessibleMixin):
     confidence: float = 0.85
     style_used: str = "analogy_first"
     key_takeaways: List[str] = field(default_factory=list)
+    diagram_type: str = "none"  # 'graphviz', 'mermaid', 'none'
+    diagram_code: Optional[str] = None
+    diagram_caption: str = ""
 
     # Backward compatibility aliases for property names
     @property

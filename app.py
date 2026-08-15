@@ -61,6 +61,7 @@ import frontend.pages.learn as learn_page
 import frontend.pages.dashboard as dashboard_page
 import frontend.pages.refresh as refresh_page
 
+
 def main():
     # Sidebar navigation
     with st.sidebar:
@@ -85,7 +86,7 @@ def main():
                 
         # Sidebar Navigation Dropdown / Radio list
         selection = st.radio(
-            "Go to",
+            "Navigation",
             menu_options,
             index=menu_options.index(st.session_state.navigation_selection) if st.session_state.navigation_selection in menu_options else 0
         )
@@ -99,28 +100,28 @@ def main():
             st.markdown("---")
             profile = queries.get_db_learner_profile(user_id_str)
             if profile:
+                lvl = profile.get('estimated_level') or profile.get('preferred_level') or 'beginner'
                 st.write(f"👤 **Learner:** {st.session_state.current_user_name}")
-                st.write(f"🌱 **Level:** {profile.get('estimated_level', 'beginner').capitalize()}")
-                st.write(f"🎨 **Style:** {profile.get('preferred_learning_style', 'analogical').capitalize()}")
+                st.write(f"🌱 **Estimated Level:** {str(lvl).capitalize()}")
             
             # Fatigue / Break Recommendation Prompt
             st.markdown("---")
-            st.markdown("**Fatigue Monitor**")
-            # Proactive fatigue check: if they have studied 3+ times in history, prompt break
-            history = queries.get_learning_history(user_id_str)
-            if len(history) >= 3:
-                st.warning("🧠 You've been working hard! Ready for a break?")
+            st.markdown("**Cognitive Monitor**")
+            history = queries.get_learning_history(user_id_str) or []
+            if len(history) >= 4:
+                st.warning("🧠 High cognitive load estimated! Ready for a 5-minute recharge?")
                 col_br1, col_br2 = st.columns(2)
                 with col_br1:
                     if st.button("Take Break", use_container_width=True):
                         st.session_state.navigation_selection = "⚡ Smart Refresh (Break)"
                         st.rerun()
                 with col_br2:
-                    st.button("Ignore", use_container_width=True)
+                    st.button("Keep Studying", use_container_width=True)
             else:
-                st.success("🟢 Energy Level: Focused")
+                st.success("🟢 Energy Level: Focused & Ready")
             
             # Logout
+            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🚪 Logout", use_container_width=True):
                 st.session_state.current_user_id = None
                 st.session_state.current_user_name = None
@@ -152,37 +153,36 @@ def main():
     elif st.session_state.navigation_selection == "⚙️ Settings":
         render_settings_page()
 
+
 def render_settings_page():
     st.markdown("<h2>⚙️ Account Settings</h2>", unsafe_allow_html=True)
-    st.write("Manage your learning styles, preferences, and account configuration.")
+    st.write("Manage your learning profile and preferences.")
     
     user_id = st.session_state.get("current_user_id")
     profile = queries.get_db_learner_profile(user_id) or {}
     
-    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-    st.markdown("### Update Onboarding Preferences")
+    st.markdown("<div class='glass-card' style='padding: 24px;'>", unsafe_allow_html=True)
+    st.markdown("### Update Knowledge Level")
     
     level_options = ["beginner", "intermediate", "advanced"]
-    current_level = profile.get("estimated_level", "beginner")
+    current_level = profile.get("estimated_level", profile.get("preferred_level", "beginner"))
     new_level = st.selectbox(
-        "Estimated Knowledge Level", 
+        "Target Concept Depth", 
         level_options, 
         index=level_options.index(current_level) if current_level in level_options else 0
     )
     
-    style_options = ["analogical", "visual", "practical", "technical"]
-    current_style = profile.get("preferred_learning_style", "analogical")
-    new_style = st.selectbox(
-        "Preferred Learning Style", 
-        style_options, 
-        index=style_options.index(current_style) if current_style in style_options else 0
-    )
-    
-    if st.button("Save Changes", type="primary", use_container_width=True):
-        queries.update_db_learner_profile(user_id, new_level, new_style)
-        st.success("Settings updated successfully!")
+    if st.button("Save Profile Settings", type="primary", use_container_width=True):
+        queries.update_db_learner_profile(
+            user_id,
+            new_level,
+            "analogy_first"
+        )
+        st.success("Preferences updated successfully!")
         st.rerun()
+        
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 if __name__ == "__main__":
     main()

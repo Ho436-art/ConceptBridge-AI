@@ -2,13 +2,15 @@
 AI Teaching Engine Module
 Owner: Member 1 (Team Lead / AI & ML)
 
-Responsibilities:
-- Explain academic and technical concepts using real-world analogies first.
-- Provide simple, beginner-friendly explanations alongside technical deep dives.
-- Provide practical real-world applications and code/visual demonstrations.
-- Adapt explanations dynamically to the learner's estimated knowledge profile.
-- Provide interactive understanding-check questions.
-- Does NOT assume learner level from a single prompt; calibrates incrementally.
+Core Factuality Architecture:
+USER QUESTION -> CONCEPT IDENTIFICATION -> VERIFIED KNOWLEDGE BASE -> AI TEACHING ENGINE
+-> ANALOGY FIRST -> SIMPLE BREAKDOWN -> TECHNICAL DEEP DIVE -> PRACTICAL EXAMPLE -> DIAGRAM -> CHECK QUESTION
+
+Rules:
+- Accuracy is prioritized over creativity.
+- Real-world analogies strictly correspond to structural constraints of the concept.
+- Real diagrams (Graphviz/Mermaid) attached whenever visual models exist.
+- No generic filler educational phrases.
 """
 
 import re
@@ -25,6 +27,8 @@ from ai.prompts.system_prompts import (
     ALTERNATIVE_STYLE_PROMPT
 )
 from ai.llm_client import query_llm_json, generate_structured_explanation_fallback
+from ai.verified_knowledge import lookup_verified_knowledge
+from ai.diagram_generator import get_diagram_for_concept
 
 
 def _normalize_concept_query(concept_query: str) -> str:
@@ -36,7 +40,9 @@ def _normalize_concept_query(concept_query: str) -> str:
         r"^what\s+is\s+(a\s+|an\s+|the\s+)?",
         r"^how\s+does\s+",
         r"^teach\s+me\s+(about\s+)?",
-        r"^can\s+you\s+explain\s+"
+        r"^can\s+you\s+explain\s+",
+        r"^tell\s+me\s+about\s+",
+        r"^give\s+me\s+an\s+explanation\s+of\s+"
     ]
     for pattern in patterns:
         query = re.sub(pattern, "", query, flags=re.IGNORECASE).strip()
@@ -67,19 +73,19 @@ def explain_concept(
     style_override: Optional[str] = None
 ) -> ConceptExplanation:
     """
-    Core AI Teaching Engine entry point.
+    Core AI Teaching Engine entry point with Ground-Truth Factuality Pipeline.
     
     Args:
-        concept (str): Concept requested by user (e.g. 'Explain recursion', 'Binary Search').
+        concept (str): Concept requested by user (e.g. 'Explain Graph Coloring', 'Recursion').
         learner_profile (LearnerProfile or dict, optional): Current learner profile.
         style_override (str, optional): Target pedagogical style (e.g. 'super_simple', 'step_by_step').
         
     Returns:
-        ConceptExplanation: Strongly typed, structured learning response.
+        ConceptExplanation: Strongly typed, structured learning response with real diagram.
     """
     clean_concept = _normalize_concept_query(concept) or concept.strip()
     
-    # Handle dict input for interoperability with other modules
+    # Handle dict input for interoperability
     profile_obj: Optional[LearnerProfile] = None
     if isinstance(learner_profile, dict):
         profile_obj = LearnerProfile(
@@ -94,33 +100,53 @@ def explain_concept(
     target_level = _resolve_learner_difficulty(profile_obj)
     target_style = style_override or (profile_obj.preferred_style if profile_obj else "analogy_first")
 
-    # Build prompt
-    prompt = (
-        f"Explain the concept: '{clean_concept}'\n"
-        f"Target Learner Knowledge Level: {target_level}\n"
-        f"Pedagogical Style: {target_style}\n"
-        f"Ensure real-world analogy is vivid, technical explanation is accurate, and understanding check is precise."
-    )
+    # 1. Pipeline Step: Verified Ground-Truth Knowledge Lookup
+    verified_data = lookup_verified_knowledge(clean_concept)
+    
+    # 2. Pipeline Step: Diagram Resolution
+    diag_type, diag_code, diag_caption = get_diagram_for_concept(clean_concept)
 
-    # Query LLM or intelligent fallback
-    json_data = query_llm_json(
-        prompt=prompt,
-        system_prompt=CONCEPTBRIDGE_TEACHER_SYSTEM_PROMPT,
-        fallback_concept=clean_concept
-    )
-
-    if not json_data or not isinstance(json_data, dict):
-        json_data = generate_structured_explanation_fallback(
-            concept=clean_concept,
-            level=target_level,
-            style=target_style
+    # 3. If verified ground-truth exists, prioritize accuracy
+    if verified_data:
+        json_data = dict(verified_data)
+        json_data["difficulty"] = target_level
+        json_data["style_used"] = target_style
+        
+        # If alternative style was requested, customize text style
+        if target_style == "super_simple":
+            json_data["real_world_analogy"] = f"Imagine in super simple terms: {json_data['simple_explanation']}"
+    else:
+        # Query LLM with strict factual grounding prompt
+        prompt = (
+            f"Concept: '{clean_concept}'\n"
+            f"Target Learner Knowledge Level: {target_level}\n"
+            f"Pedagogical Style: {target_style}\n\n"
+            f"STRICT FACTUALITY CONSTRAINTS:\n"
+            f"1. Explain '{clean_concept}' with 100% mathematical and technical accuracy.\n"
+            f"2. Never invent formulas, non-existent algorithm properties, or pseudo-code.\n"
+            f"3. The real-world analogy MUST mathematically/logically map to the exact structural constraints of {clean_concept}.\n"
+            f"4. Do NOT output generic educational filler like 'X is a fundamental concept used to solve complex problems efficiently'.\n"
+            f"5. Provide an accurate code/example demonstration and an understanding-check question."
         )
 
-    # Parse and validate UnderstandingCheck
+        json_data = query_llm_json(
+            prompt=prompt,
+            system_prompt=CONCEPTBRIDGE_TEACHER_SYSTEM_PROMPT,
+            fallback_concept=clean_concept
+        )
+
+        if not json_data or not isinstance(json_data, dict):
+            json_data = generate_structured_explanation_fallback(
+                concept=clean_concept,
+                level=target_level,
+                style=target_style
+            )
+
+    # Parse UnderstandingCheck
     check_raw = json_data.get("understanding_check", {})
     if isinstance(check_raw, dict):
         understanding_check = UnderstandingCheck(
-            question=check_raw.get("question", f"What is the key takeaway of {clean_concept}?"),
+            question=check_raw.get("question", f"What is the key rule of {clean_concept}?"),
             options=check_raw.get("options", [
                 "A) Correct fundamental mechanism",
                 "B) Common misconception",
@@ -139,6 +165,11 @@ def explain_concept(
             concept_tested=clean_concept
         )
 
+    # Attach diagram if present in verified data or diagram generator
+    final_diag_type = json_data.get("diagram_type") or diag_type or "none"
+    final_diag_code = json_data.get("diagram_code") or diag_code
+    final_diag_caption = json_data.get("diagram_caption") or diag_caption
+
     explanation = ConceptExplanation(
         concept=json_data.get("concept", clean_concept.title()),
         real_world_analogy=json_data.get("real_world_analogy", "Analogy demonstrating concept."),
@@ -148,44 +179,15 @@ def explain_concept(
         example_code_or_visual=json_data.get("example_code_or_visual", "# Demonstration snippet"),
         understanding_check=understanding_check,
         difficulty=json_data.get("difficulty", target_level),
-        confidence=float(json_data.get("confidence", 0.90)),
+        confidence=float(json_data.get("confidence", 0.95)),
         style_used=target_style,
         key_takeaways=json_data.get("key_takeaways", [
-            f"Understanding {clean_concept} builds solid engineering foundations.",
-            "Always inspect practical trade-offs and edge cases."
-        ])
+            f"Understanding {clean_concept} establishes strong technical foundations.",
+            "Verify boundary conditions and real-world system constraints."
+        ]),
+        diagram_type=final_diag_type,
+        diagram_code=final_diag_code,
+        diagram_caption=final_diag_caption
     )
 
     return explanation
-
-
-def answer_follow_up(concept: str, question: str, learner_profile: Optional[Dict[str, Any]] = None) -> str:
-    """
-    Answers a follow-up question on a concept based on the learner's estimated knowledge level.
-    """
-    level = "beginner"
-    if learner_profile:
-        if isinstance(learner_profile, dict):
-            level = learner_profile.get("estimated_level", "beginner")
-        else:
-            level = getattr(learner_profile, "estimated_level", "beginner")
-            
-    # Generic structured responses for high aesthetic display quality
-    concept_lower = concept.lower()
-    
-    if "recursion" in concept_lower:
-        if "base case" in question.lower():
-            return "Excellent question! A **base case** is the most crucial part of a recursive function. \n\n" \
-                   "**Why we need it:** Without a base case, the function keeps calling itself forever, filling up the call stack until you get a `RecursionError: maximum recursion depth exceeded` (known as a stack overflow). \n\n" \
-                   "**Example:** In our doll analogy, the base case is the smallest, solid doll that doesn't open. In code, it is usually a simple `if` condition: `if n <= 1: return 1`."
-        elif "stack overflow" in question.lower() or "limit" in question.lower():
-            return "A **stack overflow** occurs because each recursive call requires memory to store its arguments and variables. This memory is stored in stack frames. \n\n" \
-                   "Python has a default recursion limit of **1000 calls**. If your recursion goes deeper than that, Python stops it automatically. You can increase this using `sys.setrecursionlimit()`, but it is usually better to optimize your algorithm (or use loops) to prevent stack build-up."
-                   
-    # Generic fallback
-    return f"Regarding your question *'{question}'* about **{concept}**:\n\n" \
-           f"Here is an explanation tailored to your **{level}** level:\n\n" \
-           f"1. **Core Concept Connection:** This relates directly to how state and variables are managed in the background.\n" \
-           f"2. **Real-world Insight:** Think of it like reading the index of a book. Instead of reading the whole book again, you are zooming in on this specific page.\n" \
-           f"3. **Practical Tip:** When implementing this, start by testing the simplest possible input (e.g. `None`, `0` or empty lists) to check how your logic behaves under basic inputs.\n\n" \
-           f"Let me know if you would like me to show a code snippet or another analogy!"

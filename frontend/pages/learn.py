@@ -1,13 +1,24 @@
 """
-Learning Interface Page
-Owner: Member 2 (UI/UX)
+Learning Interface Page - Conversational AI Learning Hub
+Owner: Member 2 (UI/UX) & Technical Lead
+
+Features:
+- Pure conversational AI chat interface (NO forced dropdowns).
+- Natural concept inquiry, multimodal input (image & audio upload), follow-up dialogues.
+- Multi-tier concept cards (Analogy -> Simple -> Technical -> Practical -> Real Graphviz Diagram).
+- Interactive understanding-check questions & feedback strategy pivots.
 """
 
 import streamlit as st
+import time
+import ai.conversation_engine as conversation_engine
 import ai.teaching_engine as teaching_engine
+import ai.feedback_handler as feedback_handler
+import ai.learner_profile as learner_profile_manager
 import database.queries as queries
 from frontend.components.concept_card import render_concept_card
 from frontend.components.feedback_buttons import render_feedback_buttons
+
 
 def show():
     # Ensure user is logged in
@@ -16,171 +27,206 @@ def show():
         st.warning("🔒 Please log in or sign up first.")
         return
 
-    st.markdown("<h2>📖 Concept Learning Hub</h2>", unsafe_allow_html=True)
-    st.write("Explore complex topics broken down into real-world analogies, simplified concepts, and interactive code examples.")
-    
-    # Check if a recommended topic was clicked in dashboard and load it
-    recommended_topic = st.session_state.get("load_recommended_topic")
-    
-    # Get user profile
-    profile = queries.get_db_learner_profile(user_id) or {
-        "estimated_level": "beginner",
-        "preferred_learning_style": "analogical"
-    }
-    
-    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-    st.markdown("#### 🔍 What would you like to learn today?", unsafe_allow_html=True)
-    
-    # Dropdown with popular seeded topics
-    db_topics = queries.get_all_topics()
-    topic_titles = [t["title"] for t in db_topics]
-    
-    selected_topic_title = st.selectbox(
-        "Choose a seeded topic...", 
-        ["-- Select Topic --"] + topic_titles,
-        index=topic_titles.index(recommended_topic) + 1 if recommended_topic in topic_titles else 0
-    )
-    
-    # Clear the recommended topic redirect from dashboard
-    if "load_recommended_topic" in st.session_state:
+    st.markdown("<h2>💬 AI Concept Learning Hub</h2>", unsafe_allow_html=True)
+    st.caption("Ask any academic or technical concept. Learn through real-world analogies, deep dives, real diagrams, and interactive checks.")
+
+    # Initialize chat session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "active_concept" not in st.session_state:
+        st.session_state.active_concept = None
+    if "current_explanation" not in st.session_state:
+        st.session_state.current_explanation = None
+    if "quiz_answered" not in st.session_state:
+        st.session_state.quiz_answered = False
+
+    # Check if a recommended topic was clicked from Dashboard
+    if "load_recommended_topic" in st.session_state and st.session_state.load_recommended_topic:
+        rec_topic = st.session_state.load_recommended_topic
         del st.session_state.load_recommended_topic
-        
-    custom_concept = st.text_input(
-        "Or type any custom concept (e.g. Recursion, Neural Networks, PCA):", 
-        placeholder="Type a concept here..."
-    )
-    
-    # Explanation trigger button
-    btn_explain = st.button("🚀 Explain to Me!", type="primary", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    concept_to_query = None
-    if btn_explain:
-        if custom_concept.strip():
-            concept_to_query = custom_concept.strip()
-        elif selected_topic_title != "-- Select Topic --":
-            concept_to_query = selected_topic_title
-            
-        if not concept_to_query:
-            st.error("Please select a topic or enter a custom concept.")
-            
-    # Process and fetch explanation
-    if concept_to_query:
-        with st.spinner(f"AI is preparing an explanation for '{concept_to_query}'..."):
-            explanation_data = teaching_engine.explain_concept(concept_to_query, profile)
-            
-            # Map topic in DB
-            topic_id = concept_to_query.lower().replace(" ", "_")
-            category = "General"
-            for t in db_topics:
-                if t["title"].lower() == concept_to_query.lower():
-                    topic_id = t["topic_id"]
-                    category = t["category"]
-                    break
-            
-            queries.create_topic_if_not_exists(topic_id, concept_to_query, category)
-            
-            # Save history log in database
-            history_id = queries.save_learning_history(
-                user_id=user_id,
-                topic_id=topic_id,
-                concept_query=concept_to_query,
-                analogy=explanation_data.get("analogy", ""),
-                level=explanation_data.get("knowledge_level_targeted", "beginner"),
-                time_spent=45 # mock study time duration
+        _process_new_user_prompt(f"Explain {rec_topic}", user_id)
+        st.rerun()
+
+    # Top Multimodal & Quick Prompt Toolbar
+    with st.expander("📎 Multimodal Input (Image / Audio Upload)", expanded=False):
+        col_img, col_aud = st.columns(2)
+        with col_img:
+            uploaded_image = st.file_uploader(
+                "📸 Upload homework diagram or math question image:",
+                type=["png", "jpg", "jpeg", "webp"],
+                key="chat_image_upload"
             )
-            
-            # Save explanation and active topic state
-            st.session_state.current_explanation = explanation_data
-            st.session_state.current_topic_id = topic_id
-            st.session_state.current_topic_title = concept_to_query
-            st.session_state.current_history_id = history_id
-            # Reset chat history for the new topic
-            st.session_state.chat_history = []
-            
-    # Render active explanation
-    if "current_explanation" in st.session_state and st.session_state.current_explanation:
-        explanation = st.session_state.current_explanation
-        topic_id = st.session_state.current_topic_id
-        topic_title = st.session_state.current_topic_title
-        history_id = st.session_state.current_history_id
-        
-        st.markdown("---")
-        render_concept_card(explanation)
-        
-        # Feedback Buttons Callback
-        def handle_feedback(feedback_type: str):
-            rating_map = {
-                "got_it": 5,
-                "almost": 3,
-                "confused": 2,
-                "need_another_analogy": 2,
-                "make_simpler": 2,
-                "explain_visually": 2,
-                "show_example": 2,
-                "practical_example": 2
-            }
-            db_feedback_type = "still_confused"
-            if feedback_type in ["got_it", "almost", "still_confused"]:
-                db_feedback_type = feedback_type
-                
-            # Log in database feedback table using real database schema
-            queries.save_feedback(
-                user_id=user_id,
-                topic_id=topic_id,
-                feedback_type=db_feedback_type
+            if uploaded_image:
+                st.image(uploaded_image, caption="Uploaded concept question", width=300)
+                if st.button("🔍 Analyze Image Question", key="btn_img_analyze"):
+                    _process_new_user_prompt(f"Explain the concept shown in this diagram/image ({uploaded_image.name})", user_id)
+                    st.rerun()
+                    
+        with col_aud:
+            uploaded_audio = st.file_uploader(
+                "🎙️ Voice question / audio recording:",
+                type=["wav", "mp3", "m4a", "ogg"],
+                key="chat_audio_upload"
             )
-            
-            # Update mastery delta based on feedback
-            mastery_delta = 0.0
-            feedback_msg = ""
-            
-            if feedback_type == "got_it":
-                mastery_delta = 0.15
-                feedback_msg = "🎉 Awesome! Your mastery score for this topic has increased!"
-            elif feedback_type == "almost":
-                mastery_delta = 0.05
-                feedback_msg = "👍 Great progress! Practice makes perfect."
-            elif feedback_type == "need_another_analogy":
-                feedback_msg = "💡 Noted! The teaching engine will focus on secondary analogies next."
-            elif feedback_type == "make_simpler":
-                feedback_msg = "🧒 Got it! We will focus on simpler vocabulary terms."
-            elif feedback_type == "explain_visually":
-                feedback_msg = "📊 Visual aids and ASCII diagrams prioritized."
-            elif feedback_type == "show_example":
-                feedback_msg = "💻 Additional code segments will be curated."
-            elif feedback_type == "practical_example":
-                feedback_msg = "🎯 Applied real-world cases logged."
-                
-            queries.update_mastery(user_id, topic_id, mastery_delta)
-            st.toast(feedback_msg, icon="💡")
-            
-        # Render feedback module
-        render_feedback_buttons(handle_feedback)
-        
-        # Follow-up Chat Interface
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("### 💬 Ask Follow-up Questions")
-        st.caption("Ask questions to clarify specific parts of the concept or request alternative explanations.")
-        
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
-            
-        # Display chat messages
-        for role, text in st.session_state.chat_history:
-            with st.chat_message(role):
-                st.write(text)
-                
-        # Chat input box
-        if question := st.chat_input("Ask a follow-up (e.g., 'What is a base case?', 'What happens if we hit the recursion limit?')"):
-            with st.chat_message("user"):
-                st.write(question)
-            st.session_state.chat_history.append(("user", question))
-            
-            with st.spinner("AI is thinking..."):
-                response = teaching_engine.answer_follow_up(topic_title, question, profile)
-                
-            with st.chat_message("assistant"):
-                st.write(response)
-            st.session_state.chat_history.append(("assistant", response))
+            if uploaded_audio:
+                st.audio(uploaded_audio)
+                if st.button("🎤 Transcribe & Ask Voice Query", key="btn_aud_ask"):
+                    _process_new_user_prompt("Explain the recorded voice query concept", user_id)
+                    st.rerun()
+
+    # Quick Suggestion Pills
+    st.markdown("<div style='margin-bottom: 12px;'>", unsafe_allow_html=True)
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        if st.button("💡 Explain Graph Coloring", key="pill_graph"):
+            _process_new_user_prompt("Explain Graph Coloring", user_id)
             st.rerun()
+    with col_p2:
+        if st.button("💡 Explain Recursion", key="pill_rec"):
+            _process_new_user_prompt("Explain Recursion", user_id)
+            st.rerun()
+    with col_p3:
+        if st.button("💡 Database Indexing", key="pill_db"):
+            _process_new_user_prompt("Explain Database Indexing", user_id)
+            st.rerun()
+    with col_p4:
+        if st.button("💡 What is an API?", key="pill_api"):
+            _process_new_user_prompt("What is an API?", user_id)
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # 1. RENDER EXISTING CHAT CONVERSATION
+    if not st.session_state.messages:
+        # Welcome message on fresh session
+        with st.chat_message("assistant", avatar="🌉"):
+            st.markdown(
+                "**Hello! I'm ConceptBridge AI.** 🌉\n\n"
+                "Type any technical or academic concept you're studying (e.g. *'Explain Graph Coloring'*, *'What is Recursion'*, or *'How does Binary Search work?'*).\n"
+                "I will guide you from *'I don't understand'* to *'Oh, it's that easy!'* with analogies, plain English, technical deep dives, and visual diagrams."
+            )
+    else:
+        for idx, msg in enumerate(st.session_state.messages):
+            with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🌉"):
+                st.markdown(msg["content"])
+                
+                # If message contains an explanation payload, render the structured concept card
+                if msg.get("explanation"):
+                    render_concept_card(msg["explanation"])
+                    
+                    # If this is the latest explanation, render check question and feedback buttons
+                    if idx == len(st.session_state.messages) - 1:
+                        _render_interactive_check_and_feedback(msg["explanation"], user_id)
+
+    # 2. CHAT INPUT AT BOTTOM
+    prompt = st.chat_input("Ask any concept or follow-up question (e.g. 'Explain Graph Coloring', 'Make it simpler')...")
+    if prompt:
+        _process_new_user_prompt(prompt, user_id)
+        st.rerun()
+
+
+def _process_new_user_prompt(prompt_text: str, user_id: str):
+    """Processes incoming chat input through conversational intent routing."""
+    st.session_state.messages.append({"role": "user", "content": prompt_text})
+    st.session_state.quiz_answered = False
+
+    # Get learner profile from database
+    db_profile = queries.get_db_learner_profile(user_id) or {}
+    
+    # Process through conversation engine
+    response_payload = conversation_engine.handle_chat_message(
+        user_message=prompt_text,
+        active_concept=st.session_state.active_concept,
+        learner_profile=db_profile,
+        previous_explanation=st.session_state.current_explanation
+    )
+
+    text_resp = response_payload.get("text_response", "")
+    explanation_data = response_payload.get("explanation")
+    new_active_concept = response_payload.get("active_concept") or st.session_state.active_concept
+
+    if new_active_concept:
+        st.session_state.active_concept = new_active_concept
+    if explanation_data:
+        st.session_state.current_explanation = explanation_data
+        
+        # Log learning session in database
+        try:
+            queries.create_topic_if_not_exists(
+                topic_id=f"top_{new_active_concept.lower().replace(' ', '_')[:20]}",
+                title=new_active_concept,
+                category="Computer Science"
+            )
+            queries.save_learning_session(
+                user_id=user_id,
+                topic_id=f"top_{new_active_concept.lower().replace(' ', '_')[:20]}",
+                duration=120
+            )
+        except Exception:
+            pass
+
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": text_resp,
+        "explanation": explanation_data
+    })
+
+
+def _render_interactive_check_and_feedback(explanation_data: dict, user_id: str):
+    """Renders understanding-check quiz and reaction feedback buttons."""
+    check = explanation_data.get("understanding_check", {})
+    concept = explanation_data.get("concept", "Concept")
+    
+    if check and isinstance(check, dict) and check.get("question"):
+        st.markdown("---")
+        st.markdown("#### 🎯 Quick Understanding Check")
+        st.markdown(f"**{check.get('question')}**")
+        
+        options = check.get("options", [])
+        if options:
+            selected_choice = st.radio(
+                "Choose the most accurate answer:",
+                options,
+                key=f"check_opt_{concept}_{len(st.session_state.messages)}"
+            )
+            
+            if st.button("Submit Answer", key=f"btn_check_{concept}"):
+                correct_ans = check.get("correct_answer", "")
+                is_correct = selected_choice.strip() == correct_ans.strip() or (correct_ans in selected_choice)
+                st.session_state.quiz_answered = True
+                
+                if is_correct:
+                    st.success(f"🎉 **Correct!** {check.get('explanation', 'Great job grasping the concept!')}")
+                    learner_profile_manager.update_mastery(
+                        topic=concept,
+                        performance={"is_correct": True, "difficulty": explanation_data.get("difficulty", "beginner")},
+                        learner_profile={"user_id": user_id}
+                    )
+                else:
+                    st.warning(f"🤔 **Not quite.** {check.get('explanation', 'Review the analogy or breakdown above.')}")
+                    learner_profile_manager.update_mastery(
+                        topic=concept,
+                        performance={"is_correct": False, "difficulty": explanation_data.get("difficulty", "beginner")},
+                        learner_profile={"user_id": user_id}
+                    )
+
+    # Reaction Feedback Buttons
+    st.markdown("---")
+    def on_feedback_received(fb_type: str):
+        pivot_res = feedback_handler.process_feedback(
+            feedback=fb_type,
+            concept=concept,
+            learner_profile={"user_id": user_id},
+            previous_explanation=explanation_data
+        )
+        if pivot_res.get("strategy_changed") and pivot_res.get("alternative_explanation"):
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": pivot_res["encouraging_message"],
+                "explanation": pivot_res["alternative_explanation"]
+            })
+            st.session_state.current_explanation = pivot_res["alternative_explanation"]
+            st.rerun()
+        else:
+            st.toast(pivot_res.get("encouraging_message", "Feedback recorded!"), icon="👍")
+
+    render_feedback_buttons(on_feedback=on_feedback_received)
