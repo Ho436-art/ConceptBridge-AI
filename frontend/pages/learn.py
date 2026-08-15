@@ -3,11 +3,15 @@ Learning Interface Page - Conversational AI Learning Hub
 Owner: Member 2 (UI/UX) & Technical Lead
 
 Features:
-- Primary Free-Form Chat Input (st.chat_input) that processes ANY academic/technical concept.
-- Multimodal toolbar (PDF & Image file upload + in-browser live microphone speech-to-text).
-- Multi-tier concept cards (Analogy -> Simple -> Technical -> Practical -> Real Graphviz Diagram).
-- Interactive understanding-check questions & feedback strategy pivots.
-- Optional quick-example suggestion chips.
+- Primary AI-chat Learning Hub where the user can ask to learn ANYTHING.
+- Top / Center Dedicated Composer matching the exact user layout:
+    [ Long Text Area: Ask anything you want to learn... ]
+    [ 📎 Attach File | 🎤 Speak (Mic STT) | ➤ Send ]
+- Floating bottom st.chat_input for quick follow-up inquiries.
+- Speech-to-Text via Groq Whisper populates the input box for user review/edit before sending.
+- PDF and document extraction with local pypdf parser.
+- Multi-tier concept cards (Real-world analogy, simple breakdown, technical deep dive, practical example, code, Graphviz diagram, check quiz).
+- Optional suggestion chips that never force topic selection.
 """
 
 import streamlit as st
@@ -30,9 +34,6 @@ def show():
         st.warning("🔒 Please log in or sign up first.")
         return
 
-    st.markdown("<h2>💬 AI Concept Learning Hub</h2>", unsafe_allow_html=True)
-    st.caption("Ask any academic or technical concept. Learn through real-world analogies, plain English, technical deep dives, real diagrams, and interactive checks.")
-
     # Initialize chat session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -42,12 +43,12 @@ def show():
         st.session_state.current_explanation = None
     if "quiz_answered" not in st.session_state:
         st.session_state.quiz_answered = False
+    if "transcribed_text_buffer" not in st.session_state:
+        st.session_state.transcribed_text_buffer = ""
     if "attached_doc_context" not in st.session_state:
         st.session_state.attached_doc_context = None
     if "attached_doc_name" not in st.session_state:
         st.session_state.attached_doc_name = None
-    if "voice_transcript" not in st.session_state:
-        st.session_state.voice_transcript = None
 
     # Check if a recommended topic was clicked from Dashboard
     if "load_recommended_topic" in st.session_state and st.session_state.load_recommended_topic:
@@ -56,92 +57,124 @@ def show():
         _process_new_user_prompt(f"Explain {rec_topic}", user_id)
         st.rerun()
 
-    # 1. OPTIONAL QUICK SUGGESTION CHIPS (Click any or type your own question below)
-    st.caption("💡 Quick Example Suggestions (Click any or type your own question in the chat bar below):")
+    # 1. HEADER (Clean, Centered, Student-Friendly)
+    st.markdown(
+        """
+        <div style="text-align: center; margin-top: 10px; margin-bottom: 24px;">
+            <h1 style="font-size: 2.2rem; font-weight: 700; color: #1E293B; margin-bottom: 6px;">
+                🌉 ConceptBridge AI
+            </h1>
+            <p style="font-size: 1.15rem; color: #64748B; margin-top: 0;">
+                What would you like to learn today?
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # 2. PRIMARY MULTIMODAL COMPOSER CARD
+    with st.container():
+        st.markdown("<div style='background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+        
+        # Long Text Area for Question
+        user_typed_query = st.text_area(
+            "Ask anything you want to learn...",
+            value=st.session_state.transcribed_text_buffer,
+            placeholder="Ask anything you want to learn (e.g. 'Explain recursion', 'What is a transistor?', 'Why is binary search faster?', 'Explain TCP/IP like I am a beginner')...",
+            height=75,
+            key="main_composer_textarea",
+            label_visibility="collapsed"
+        )
+        
+        # Action Toolbar Row: 📎 Attach File | 🎤 Speak (Mic) | ➤ Send
+        col_attach, col_speak, col_send = st.columns([1.5, 1.5, 1])
+        
+        with col_attach:
+            with st.popover("📎 Attach File (PDF / Image)"):
+                uploaded_file = st.file_uploader(
+                    "Upload document or image:",
+                    type=["pdf", "png", "jpg", "jpeg", "webp", "txt", "py", "md"],
+                    key="popover_file_uploader"
+                )
+                if uploaded_file:
+                    success, extracted = document_engine.extract_content_from_file(uploaded_file.name, uploaded_file.getvalue())
+                    if success:
+                        st.session_state.attached_doc_context = extracted
+                        st.session_state.attached_doc_name = uploaded_file.name
+                        st.success(f"📎 Attached `{uploaded_file.name}`")
+        
+        with col_speak:
+            with st.popover("🎤 Speak Question (Mic)"):
+                st.caption("Click the red button, speak clearly, then click stop.")
+                recorded_audio = st.audio_input("Record voice question:", key="composer_audio_recorder")
+                if recorded_audio:
+                    audio_bytes = recorded_audio.getvalue()
+                    if audio_bytes and len(audio_bytes) > 500:
+                        success, recognized_text = speech_engine.transcribe_audio(audio_bytes)
+                        if success and recognized_text:
+                            st.session_state.transcribed_text_buffer = recognized_text
+                            st.success(f"Transcribed: *\"{recognized_text}\"*")
+                            if st.button("Apply to Input Box", key="btn_apply_speech"):
+                                st.rerun()
+                        elif not success:
+                            st.warning(f"⚠️ {recognized_text}")
+
+        with col_send:
+            if st.button("➤ Send", key="btn_composer_send", type="primary", use_container_width=True):
+                query_to_process = user_typed_query.strip()
+                doc_to_process = st.session_state.attached_doc_context
+                
+                if query_to_process or doc_to_process:
+                    final_prompt = query_to_process if query_to_process else f"Explain the attached file: {st.session_state.attached_doc_name}"
+                    st.session_state.transcribed_text_buffer = ""
+                    st.session_state.attached_doc_context = None
+                    st.session_state.attached_doc_name = None
+                    _process_new_user_prompt(final_prompt, user_id, context_document=doc_to_process)
+                    st.rerun()
+                else:
+                    st.warning("Please type a concept or record speech before sending.")
+
+        if st.session_state.attached_doc_name:
+            st.info(f"📎 **Attached:** `{st.session_state.attached_doc_name}` — Will be sent to the AI with your question.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 3. OPTIONAL QUICK SUGGESTIONS (Purely optional examples, never mandatory)
+    st.markdown(
+        """
+        <div style="margin-bottom: 16px;">
+            <span style="font-size: 0.88rem; color: #64748B; font-weight: 500;">Try asking:</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     col_p1, col_p2, col_p3, col_p4 = st.columns(4)
     with col_p1:
-        if st.button("💡 Explain Linear Search", key="pill_linear", use_container_width=True):
-            _process_new_user_prompt("Explain linear search", user_id)
-            st.rerun()
-    with col_p2:
         if st.button("💡 Explain Recursion", key="pill_rec", use_container_width=True):
             _process_new_user_prompt("Explain recursion in very simple words", user_id)
             st.rerun()
-    with col_p3:
+    with col_p2:
         if st.button("💡 What is a Transistor?", key="pill_transistor", use_container_width=True):
             _process_new_user_prompt("What is a transistor?", user_id)
             st.rerun()
+    with col_p3:
+        if st.button("💡 What is an API?", key="pill_api", use_container_width=True):
+            _process_new_user_prompt("What is an API?", user_id)
+            st.rerun()
     with col_p4:
-        if st.button("💡 What is DB Indexing?", key="pill_db", use_container_width=True):
-            _process_new_user_prompt("What is database indexing?", user_id)
+        if st.button("💡 Explain Binary Search", key="pill_bsearch", use_container_width=True):
+            _process_new_user_prompt("Why is binary search faster than linear search?", user_id)
             st.rerun()
 
-    # 2. MULTIMODAL TOOLBAR (Attach PDF/Image & Live Microphone Recording)
-    with st.expander("📎 Attach Document / 🎤 Live Microphone Input", expanded=bool(st.session_state.attached_doc_name or st.session_state.voice_transcript)):
-        col_file, col_mic = st.columns(2)
-        
-        with col_file:
-            st.markdown("#### 📎 Attach File (PDF, Image, Notes)")
-            uploaded_file = st.file_uploader(
-                "Choose a PDF or image:",
-                type=["pdf", "png", "jpg", "jpeg", "webp", "txt", "py", "md"],
-                key="multimodal_file_uploader"
-            )
-            if uploaded_file:
-                success, extracted = document_engine.extract_content_from_file(uploaded_file.name, uploaded_file.getvalue())
-                if success:
-                    st.session_state.attached_doc_context = extracted
-                    st.session_state.attached_doc_name = uploaded_file.name
-                    st.success(f"📎 Attached `{uploaded_file.name}` ({len(uploaded_file.getvalue())//1024} KB)")
-                    if st.button("🔍 Explain Attached File Now", key="btn_explain_doc", type="primary"):
-                        _process_new_user_prompt(
-                            f"Explain the concept in this attached file ({uploaded_file.name})",
-                            user_id,
-                            context_document=extracted
-                        )
-                        st.session_state.attached_doc_context = None
-                        st.session_state.attached_doc_name = None
-                        st.rerun()
+    st.markdown("<hr style='border: none; border-top: 1px solid #E2E8F0; margin: 20px 0;'>", unsafe_allow_html=True)
 
-        with col_mic:
-            st.markdown("#### 🎤 In-Browser Microphone")
-            st.caption("Click record, speak your question, then click stop.")
-            recorded_audio = st.audio_input("Record voice question:", key="multimodal_mic_input")
-            if recorded_audio:
-                audio_bytes = recorded_audio.getvalue()
-                if audio_bytes and len(audio_bytes) > 500:
-                    success, recognized_text = speech_engine.transcribe_audio(audio_bytes)
-                    if success and recognized_text:
-                        st.session_state.voice_transcript = recognized_text
-                    elif not success:
-                        st.warning(f"⚠️ {recognized_text}")
-
-            if st.session_state.voice_transcript:
-                st.markdown(f"**Recognized Speech:** *\"{st.session_state.voice_transcript}\"*")
-                col_va, col_vc = st.columns([2, 1])
-                with col_va:
-                    if st.button("🚀 Ask Transcribed Question", key="btn_ask_voice", type="primary", use_container_width=True):
-                        query_to_send = st.session_state.voice_transcript
-                        st.session_state.voice_transcript = None
-                        _process_new_user_prompt(query_to_send, user_id)
-                        st.rerun()
-                with col_vc:
-                    if st.button("Clear Voice", key="btn_clear_voice_mic", use_container_width=True):
-                        st.session_state.voice_transcript = None
-                        st.rerun()
-
-    if st.session_state.attached_doc_name:
-        st.info(f"📎 **Attached to next message:** `{st.session_state.attached_doc_name}` — Type your question below to ask about it!")
-
-    st.markdown("---")
-
-    # 3. RENDER EXISTING CHAT CONVERSATION
+    # 4. RENDER EXISTING CHAT CONVERSATION
     if not st.session_state.messages:
         with st.chat_message("assistant", avatar="🌉"):
             st.markdown(
                 "**Hello! I'm ConceptBridge AI.** 🌉\n\n"
-                "Type any technical or academic concept you want to learn below (e.g. *'Explain linear search'*, *'Explain recursion'*, *'What is a transistor?'*, or *'What is database indexing?'*).\n"
-                "I will bridge the gap from *'I don't understand'* to *'Oh, it's that easy!'* with analogies, plain English, technical deep dives, and real visual diagrams."
+                "You can ask me to explain **any concept** you're studying — from computer science and mathematics to physics and engineering.\n"
+                "I will bridge the gap from *'I don't understand'* to *'Oh, it's that easy!'* with intuitive analogies, plain English, technical mechanics, and interactive checks."
             )
     else:
         for idx, msg in enumerate(st.session_state.messages):
@@ -156,18 +189,13 @@ def show():
                     if idx == len(st.session_state.messages) - 1:
                         _render_interactive_check_and_feedback(msg["explanation"], user_id)
 
-    # 4. PRIMARY FREE-FORM CHAT INPUT COMPOSER (Floating Bottom Bar)
-    user_prompt = st.chat_input(
-        "Ask any concept or question (e.g. 'Explain linear search', 'Explain recursion', 'What is a transistor?')..."
-    )
-    
-    if user_prompt:
+    # 5. FLOATING BOTTOM CHAT INPUT (For quick follow-ups)
+    bottom_prompt = st.chat_input("Ask any follow-up question or new concept...")
+    if bottom_prompt:
         context_doc = st.session_state.attached_doc_context
-        # Clear attached context after using
         st.session_state.attached_doc_context = None
         st.session_state.attached_doc_name = None
-        
-        _process_new_user_prompt(user_prompt.strip(), user_id, context_document=context_doc)
+        _process_new_user_prompt(bottom_prompt.strip(), user_id, context_document=context_doc)
         st.rerun()
 
 
@@ -202,7 +230,7 @@ def _process_new_user_prompt(prompt_text: str, user_id: str, context_document: s
             queries.create_topic_if_not_exists(
                 topic_id=f"top_{new_active_concept.lower().replace(' ', '_')[:20]}",
                 title=new_active_concept,
-                category="Computer Science"
+                category="General Learning"
             )
             queries.save_learning_session(
                 user_id=user_id,
@@ -276,6 +304,7 @@ def _render_interactive_check_and_feedback(explanation_data: dict, user_id: str)
             st.rerun()
         else:
             msg = pivot_res.get("encouraging_message") or "Feedback recorded!"
-            st.toast(msg, icon="👍")
+            if msg and str(msg).strip():
+                st.toast(str(msg).strip(), icon="👍")
 
     render_feedback_buttons(on_feedback=on_feedback_received)

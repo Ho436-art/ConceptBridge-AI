@@ -192,21 +192,65 @@ def _clean_json_string(raw_text: str) -> str:
     return text.strip()
 
 
-def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") -> Optional[Dict[str, Any]]:
+def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "", image_b64: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Attempts to call available LLM API (OpenAI or Gemini) if keys exist.
+    Attempts to call available LLM API (Groq LLaMA-3.3, OpenAI, or Gemini) if keys exist.
     Returns parsed dictionary or None if API is unavailable.
     """
     if os.getenv("TESTING", "").lower() == "true":
         return None
 
     import socket
-    socket.setdefaulttimeout(2.5)
+    socket.setdefaulttimeout(4.0)
 
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    # Try OpenAI if valid key provided (standard sk- prefix)
+    # 1. PRIMARY PROVIDER: Groq (Llama-3.3-70b-versatile with Vision support)
+    if groq_key and len(groq_key) > 10:
+        import urllib.request
+        default_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        
+        # If image is attached, select Groq Vision model
+        if image_b64:
+            model_to_use = "llama-3.2-11b-vision-preview"
+            user_content = [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+            ]
+        else:
+            model_to_use = default_model
+            user_content = prompt
+
+        candidate_groq_models = [model_to_use, "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
+        for g_model in candidate_groq_models:
+            try:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {groq_key}"
+                }
+                payload = {
+                    "model": g_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    "temperature": 0.5,
+                    "response_format": {"type": "json_object"}
+                }
+                req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+                with urllib.request.urlopen(req, timeout=5.0) as response:
+                    res_data = json.loads(response.read().decode("utf-8"))
+                    content = res_data["choices"][0]["message"]["content"]
+                    parsed = json.loads(_clean_json_string(content))
+                    if isinstance(parsed, dict) and "concept" in parsed:
+                        return parsed
+            except Exception:
+                continue
+
+    # 2. SECONDARY: OpenAI if configured
     if openai_key and openai_key.startswith("sk-") and len(openai_key) > 20:
         try:
             import urllib.request
@@ -225,14 +269,14 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
                 "response_format": {"type": "json_object"}
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=2.0) as response:
+            with urllib.request.urlopen(req, timeout=3.0) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 content = res_data["choices"][0]["message"]["content"]
                 return json.loads(_clean_json_string(content))
         except Exception:
-            pass  # Fall through to Gemini or fallback
+            pass
 
-    # Try Gemini if key provided
+    # 3. TERTIARY: Gemini if key provided
     if gemini_key and len(gemini_key) > 10:
         import urllib.request
         candidate_models = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-pro"]
@@ -252,6 +296,41 @@ def query_llm_json(prompt: str, system_prompt: str, fallback_concept: str = "") 
                     return json.loads(_clean_json_string(content))
             except Exception:
                 continue
+
+    return None
+
+
+def query_llm_text(prompt: str, system_prompt: str = "You are a helpful, empathetic learning assistant.") -> Optional[str]:
+    """
+    Direct text completion for conversational chat, friendly breaks, or short clarifications.
+    """
+    if os.getenv("TESTING", "").lower() == "true":
+        return None
+
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if groq_key and len(groq_key) > 10:
+        try:
+            import urllib.request
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {groq_key}"
+            }
+            payload = {
+                "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 300
+            }
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+            with urllib.request.urlopen(req, timeout=4.0) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                return res_data["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass
 
     return None
 

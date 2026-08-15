@@ -218,6 +218,10 @@ class TestFourMandatoryProblems(unittest.TestCase):
     def test_explain_concept_with_attached_document(self):
         """Teaching engine must incorporate attached document context into generated explanation."""
         doc_context = "TCP/IP consists of 4 abstraction layers: Network Interface, Internet, Transport, and Application."
+        exp = explain_concept("Explain this document in simple words", context_document=doc_context)
+        self.assertIsNotNone(exp.simple_explanation)
+        self.assertIsNotNone(exp.technical_explanation)
+
     def test_free_form_input_explain_linear_search(self):
         """User types 'Explain linear search' -> AI responds with complete explanation."""
         res = handle_chat_message("Explain linear search")
@@ -253,6 +257,15 @@ class TestFourMandatoryProblems(unittest.TestCase):
         self.assertEqual(res["intent"], "new_concept")
         self.assertIsNotNone(res["explanation"])
         self.assertIsNotNone(res["explanation"]["simple_explanation"])
+
+    def test_friendly_ai_varies_with_user_input(self):
+        """Friendly AI break partner responds dynamically to distinct inputs."""
+        import smart_refresh.friendly_chat as fc
+        r1 = fc.respond_to_user_message("tell me a joke", "Alex")
+        r2 = fc.respond_to_user_message("i am feeling exhausted", "Alex")
+        r3 = fc.respond_to_user_message("okay did it", "Alex")
+        self.assertNotEqual(r1, r2)
+        self.assertNotEqual(r2, r3)
 
 
 if __name__ == "__main__":
