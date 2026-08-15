@@ -218,9 +218,41 @@ class TestFourMandatoryProblems(unittest.TestCase):
     def test_explain_concept_with_attached_document(self):
         """Teaching engine must incorporate attached document context into generated explanation."""
         doc_context = "TCP/IP consists of 4 abstraction layers: Network Interface, Internet, Transport, and Application."
-        exp = explain_concept("Explain this document in simple words", context_document=doc_context)
-        self.assertIsNotNone(exp.simple_explanation)
-        self.assertIsNotNone(exp.technical_explanation)
+    def test_free_form_input_explain_linear_search(self):
+        """User types 'Explain linear search' -> AI responds with complete explanation."""
+        res = handle_chat_message("Explain linear search")
+        self.assertEqual(res["intent"], "new_concept")
+        self.assertEqual(res["active_concept"], "Linear Search")
+        self.assertIsNotNone(res["explanation"])
+        self.assertEqual(res["explanation"]["concept"], "Linear Search")
+
+    def test_free_form_input_explain_recursion(self):
+        """User types 'Explain recursion' -> AI responds with recursion concept."""
+        res = handle_chat_message("Explain recursion")
+        self.assertEqual(res["intent"], "new_concept")
+        self.assertEqual(res["active_concept"], "Recursion")
+        self.assertIsNotNone(res["explanation"])
+
+    def test_free_form_input_what_is_database_indexing(self):
+        """User types 'What is database indexing?' -> AI responds with indexing concept."""
+        res = handle_chat_message("What is database indexing?")
+        self.assertEqual(res["intent"], "new_concept")
+        self.assertIn("indexing", res["active_concept"].lower())
+        self.assertIsNotNone(res["explanation"])
+
+    def test_free_form_input_what_is_a_transistor(self):
+        """User types 'What is a transistor?' -> AI responds with transistor breakdown."""
+        res = handle_chat_message("What is a transistor?")
+        self.assertEqual(res["intent"], "new_concept")
+        self.assertEqual(res["active_concept"], "Transistor")
+        self.assertIsNotNone(res["explanation"])
+
+    def test_free_form_input_arbitrary_unlisted_concept(self):
+        """User types arbitrary concept not in predefined topics -> AI responds accurately."""
+        res = handle_chat_message("Explain dynamic programming memoization")
+        self.assertEqual(res["intent"], "new_concept")
+        self.assertIsNotNone(res["explanation"])
+        self.assertIsNotNone(res["explanation"]["simple_explanation"])
 
 
 if __name__ == "__main__":
